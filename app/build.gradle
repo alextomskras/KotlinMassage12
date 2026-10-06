@@ -63,5 +63,8 @@ dependencies {
     implementation 'de.hdodenhof:circleimageview:3.1.0'
     // Groupie 2.x недоступен (jcenter мёртв, jitpack 401) — используется локальный шим
     // com.xwray.groupie в app/src/main/java/com/xwray/groupie/Groupie.kt
+    // ВНИМАНИЕ: если в classpath APK всё ещё попадает настоящий com.xwray.groupie из libs/*.jar
+    // (fileTree ниже), его ViewHolder.itemView package-private -> IllegalAccessError на телефоне.
+    // Такие jar нужно удалить из app/libs/, иначе шим игнорируется рантаймом.
     implementation 'com.squareup.picasso:picasso:2.8'
 }

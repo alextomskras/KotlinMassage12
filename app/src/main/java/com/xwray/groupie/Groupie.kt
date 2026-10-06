@@ -1,6 +1,5 @@
 package com.xwray.groupie
 
-import android.content.Context
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -12,29 +11,29 @@ import androidx.recyclerview.widget.RecyclerView
  * все экраны. Поведение: плоский список, bind по позиции, notifyDataSetChanged на мутациях
  * (для учебных объёмов сообщений более чем достаточно).
  */
-open class ViewHolder(val itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-    val context: Context get() = itemView.context
+// ViewHolder НЕ объявляем своим классом: это RecyclerView.ViewHolder (itemView public).
+// Собственный com.xwray.groupie.ViewHolder с полем itemView опасен: если в classpath
+// APK оказывается настоящий groupie 2.x (package-private itemView), компилятор берёт
+// наш класс, а рантайм — его, и вызов .itemView из чужого пакета даёт IllegalAccessError
+// (реальный краш LatestKartinkaMessageRow.bind на Samsung). typealias стирается в байткод,
+// так что оба варианта совпадают всегда.
+typealias ViewHolder = RecyclerView.ViewHolder
 
-    /**
-     * Groupie передаёт позицию в bind(); у нашего ViewHolder она нужна для защиты
-     * асинхронных колбэков (профиль/картинка) от переиспользования ячейки.
-     */
-    var boundPosition: Int = RecyclerView.NO_POSITION
+/** Защита асинхронных колбэков от переиспользования ячейки (бывш. ViewHolder.boundPosition). */
+var ViewHolder.boundPosition: Int
+    get() = (tag as? Int) ?: RecyclerView.NO_POSITION
+    set(value) { tag = value }
 
-    /**
-     * Замена Kotlin Synthetics (kotlinx.android.synthetic, удалён из Kotlin 1.4+):
-     * itemView.some_id -> itemView.findViewById(R.id.some_id).
-     */
-    operator fun get(name: String): android.view.View? =
-        itemView.findViewById(ViewIdResolver.idOf(name))
-}
+/** Замена Kotlin Synthetics: holder["some_id"] -> findViewById(R.id.some_id). */
+operator fun ViewHolder.get(name: String): android.view.View? =
+    itemView.findViewById(ViewIdResolver.idOf(name))
 
 abstract class Item<VH : ViewHolder> {
     abstract fun getLayout(): Int
     abstract fun bind(viewHolder: VH, position: Int)
     open fun createViewHolder(view: android.view.View): VH {
         @Suppress("UNCHECKED_CAST")
-        return ViewHolder(view) as VH
+        return RecyclerView.ViewHolder(view) as VH
     }
     open val id: Long get() = hashCode().toLong()
 }
