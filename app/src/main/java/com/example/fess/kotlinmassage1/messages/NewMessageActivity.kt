@@ -43,14 +43,24 @@ class NewMessageActivity : AppCompatActivity() {
 
             override fun onDataChange(p0: DataSnapshot) {
                 val adapter = ChatRecyclerAdapter()
+                val myUid = com.google.firebase.auth.FirebaseAuth.getInstance().uid
+                var total = 0
+                var skippedNull = 0
+                var skippedSelf = 0
 
                 p0.children.forEach {
-                    Log.d("NewMessage", it.toString())
+                    total += 1
                     val user = it.getValue(User::class.java)
-                    if (user != null) {
+                    if (user == null || user.username.isNullOrEmpty()) {
+                        skippedNull += 1
+                        Log.w("NewMessage", "User node ${it.key} -> getValue(User) = null/empty (схема не совпала)")
+                    } else if (user.uid == myUid) {
+                        skippedSelf += 1 // себя в списке чатов не показываем
+                    } else {
                         adapter.append(UserItem(user))
                     }
                 }
+                Log.d("NewMessage", "users=$total, shown=${adapter.itemCount}, skippedNoSchema=$skippedNull, skippedSelf=$skippedSelf")
 
                 adapter.onItemClickListener = fun(item: com.example.fess.kotlinmassage1.views.ChatRowDelegate) {
                     val userItem = item as UserItem
@@ -68,7 +78,7 @@ class NewMessageActivity : AppCompatActivity() {
             }
 
             override fun onCancelled(p0: DatabaseError) {
-
+                Log.e("NewMessage", "Чтение /users отклонено правилами БД: ${p0.message}")
             }
         })
     }
