@@ -19,10 +19,18 @@ import androidx.recyclerview.widget.RecyclerView
 // так что оба варианта совпадают всегда.
 typealias ViewHolder = RecyclerView.ViewHolder
 
-/** Защита асинхронных колбэков от переиспользования ячейки (бывш. ViewHolder.boundPosition). */
-var ViewHolder.boundPosition: Int
+/**
+ * Защита асинхронных колбэков от переиспользования ячейки (бывш. ViewHolder.boundPosition).
+ * Расширение объявлено на конкретном RecyclerView.ViewHolder, а НЕ на typealias
+ * (typealias ViewHolder -> RecyclerView.ViewHolder), иначе компилятор видит два
+ * объявления boundPosition для одного класса и падает с "Val cannot be reassigned".
+ */
+val RecyclerView.ViewHolder.boundPosition: Int
     get() = (tag as? Int) ?: RecyclerView.NO_POSITION
-    set(value) { tag = value }
+
+fun RecyclerView.ViewHolder.setBoundPosition(position: Int) {
+    tag = position
+}
 
 /** Замена Kotlin Synthetics: holder["some_id"] -> findViewById(R.id.some_id). */
 operator fun ViewHolder.get(name: String): android.view.View? =
@@ -109,7 +117,7 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.boundPosition = position
+        holder.setBoundPosition(position)
         @Suppress("UNCHECKED_CAST")
         (items[position] as Item<ViewHolder>).bind(holder, position)
         holder.itemView.setOnClickListener {
