@@ -153,6 +153,9 @@ class LatestMessagesActivity : AppCompatActivity() {
                 startActivity(intent)
             }
             R.id.menu_sign_out -> {
+                // Убираем FCM-токен этого устройства из /user-tokens/{uid}/{deviceId},
+                // иначе бэкенд продолжит слать пуши на logout-аккаунт.
+                com.example.fess.kotlinmassage1.util.TokenStore.removeCurrentToken(this)
                 FirebaseAuth.getInstance().signOut()
                 val intent = Intent(this, RegisterActivity::class.java)
                 intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)
