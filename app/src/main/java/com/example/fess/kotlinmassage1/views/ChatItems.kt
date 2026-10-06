@@ -2,21 +2,25 @@ package com.example.fess.kotlinmassage1.views
 
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.models.User
 import com.example.fess.kotlinmassage1.util.ImageLoader
 import com.example.fess.kotlinmassage1.util.ImageUtils
-import com.xwray.groupie.Item
-import com.xwray.groupie.ViewHolder
 
 /**
  * Bubble-элементы чата. Декод base64-картинок вынесен в фоновый пул (ImageLoader):
  * раньше он выполнялся синхронно прямо в bind() и фризил скролл длинных чатов.
+ * Реализуют ChatRowDelegate — рендерятся через ChatRecyclerAdapter (без groupie).
  */
 
-class ChatFromItem(val text: String, val user: User, val time: String) : Item<ViewHolder>() {
+class ChatFromItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
+    override val chatPartnerUser: User? get() = user
+
+    override fun layoutRes(): Int = R.layout.chat_from_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
         viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = text
         viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_from_message_time2).text = time
         ImageLoader.loadAvatarInto(
@@ -24,13 +28,15 @@ class ChatFromItem(val text: String, val user: User, val time: String) : Item<Vi
             viewHolder.itemView.findViewById(R.id.imageview_chat_from_row)
         )
     }
-
-    override fun getLayout(): Int = R.layout.chat_from_row
 }
 
-class ChatToItem(val text: String, val user: User, val time: String) : Item<ViewHolder>() {
+class ChatToItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
+    override val chatPartnerUser: User? get() = user
+
+    override fun layoutRes(): Int = R.layout.chat_to_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
         viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = text
         viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_to_message_time2).text = time
         ImageLoader.loadAvatarInto(
@@ -38,14 +44,16 @@ class ChatToItem(val text: String, val user: User, val time: String) : Item<View
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row)
         )
     }
-
-    override fun getLayout(): Int = R.layout.chat_to_row
 }
 
 /** Картинка от нас: base64 из БД декодится в фоне; legacy Storage-URL — Picasso. */
-class KartinkaFromItem(val text: String, val user: User, val time: String) : Item<ViewHolder>() {
+class KartinkaFromItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
+    override val chatPartnerUser: User? get() = user
+
+    override fun layoutRes(): Int = R.layout.kartinka_from_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
         viewHolder.itemView.findViewById<TextView>(R.id.textView_message_time).text = time
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_from_row2)
@@ -61,13 +69,15 @@ class KartinkaFromItem(val text: String, val user: User, val time: String) : Ite
             viewHolder.itemView.findViewById(R.id.imageview_chat_from_row2)
         )
     }
-
-    override fun getLayout(): Int = R.layout.kartinka_from_row
 }
 
-class KartinkaToItem(val text: String, val user: User, val time: String) : Item<ViewHolder>() {
+class KartinkaToItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
+    override val chatPartnerUser: User? get() = user
+
+    override fun layoutRes(): Int = R.layout.kartinka_to_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
         viewHolder.itemView.findViewById<TextView>(R.id.textView_to_message_time).text = time
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_to_row2)
@@ -82,6 +92,4 @@ class KartinkaToItem(val text: String, val user: User, val time: String) : Item<
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row2)
         )
     }
-
-    override fun getLayout(): Int = R.layout.kartinka_to_row
 }

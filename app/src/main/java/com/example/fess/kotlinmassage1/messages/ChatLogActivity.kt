@@ -27,9 +27,8 @@ import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
-import com.xwray.groupie.GroupAdapter
-import com.xwray.groupie.Item
-import com.xwray.groupie.ViewHolder
+import com.example.fess.kotlinmassage1.views.ChatRecyclerAdapter
+import com.example.fess.kotlinmassage1.views.chatItemFor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -43,7 +42,7 @@ class ChatLogActivity : AppCompatActivity() {
         private val TIME_FORMAT = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault())
     }
 
-    private val adapter = GroupAdapter<ViewHolder>()
+    private val adapter = ChatRecyclerAdapter()
     private var toUser: User? = null
     /** Сохраняем слушателя + ref, чтобы снять его в onDestroy (раньше утекал вместе с активити). */
     private var messagesListener: ChildEventListener? = null
@@ -119,17 +118,10 @@ class ChatLogActivity : AppCompatActivity() {
      * Рендер сообщения по ЯВНОМУ типу (ChatMessage.type с обратной совместимостью):
      * image -> Kartinka*, иначе Chat*. Декод base64 внутри items — через ImageLoader (фон).
      */
-    private fun buildChatItem(chatMessage: ChatMessage, isIncoming: Boolean): Item<ViewHolder> {
+    private fun buildChatItem(chatMessage: ChatMessage, isIncoming: Boolean): com.example.fess.kotlinmassage1.views.ChatRowDelegate {
         val timeStr = TIME_FORMAT.format(Date(chatMessage.timestamp * 1000))
         val user = if (isIncoming) toUser!! else (LatestMessagesActivity.currentUser ?: toUser!!)
-        return when {
-            chatMessage.type == ChatMessage.TYPE_IMAGE && isIncoming ->
-                KartinkaToItem(chatMessage.text, user, timeStr)
-            chatMessage.type == ChatMessage.TYPE_IMAGE ->
-                KartinkaFromItem(chatMessage.text, user, timeStr)
-            isIncoming -> ChatToItem(chatMessage.text, user, timeStr)
-            else -> ChatFromItem(chatMessage.text, user, timeStr)
-        }
+        return chatItemFor(chatMessage, user, isIncoming, timeStr)
     }
 
     private fun listenForMessages() {
@@ -141,7 +133,7 @@ class ChatLogActivity : AppCompatActivity() {
             override fun onChildAdded(p0: DataSnapshot, p1: String?) {
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
-                adapter.add(buildChatItem(chatMessage, isIncoming))
+                adapter.append(buildChatItem(chatMessage, isIncoming))
                 scrollToBottom()
             }
 

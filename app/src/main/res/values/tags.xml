@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id для setTag/getTag: позиция привязанной ячейки (защита асинхронных колбэков). -->
+<resources>
+    <item name="tag_bound_position" type="id" />
+</resources>

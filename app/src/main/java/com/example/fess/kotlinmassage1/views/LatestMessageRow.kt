@@ -2,6 +2,7 @@ package com.example.fess.kotlinmassage1.views
 
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.models.ChatMessage
 import com.example.fess.kotlinmassage1.models.User
@@ -9,13 +10,6 @@ import com.example.fess.kotlinmassage1.util.ImageLoader
 import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.squareup.picasso.Picasso
-import com.xwray.groupie.Item
-// boundPosition — extension-свойство из локального шима Groupie, нужен явный импорт.
-import com.xwray.groupie.boundPosition
-// ViewHolder из com.xwray.groupie — это typealias на RecyclerView.ViewHolder (itemView public).
-// Раньше здесь был свой класс с полем itemView, и если в classpath APK попадал настоящий
-// groupie 2.x (package-private itemView), на устройстве был IllegalAccessError (краш bind()).
-import com.xwray.groupie.ViewHolder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -25,19 +19,25 @@ interface DialogItem {
     val chatPartnerUser: User?
 }
 
+/** Позиция, к которой сейчас привязан holder (защита асинхронных колбэков от переиспользования ячейки). */
+private fun RecyclerView.ViewHolder.boundPosition(): Int =
+    (itemView.getTag(R.id.tag_bound_position) as? Int) ?: RecyclerView.NO_POSITION
+
 /**
  * Строка списка диалогов (обычное текстовое сообщение).
  * Профиль собеседника подтягивается через ImageLoader.fetchUser (колбэк в main),
  * аватар — Picasso c превью-ресайзом.
  */
-class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), DialogItem {
+class LatestMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, DialogItem {
 
     /** Имя собеседника доступно по клику (см. LatestMessagesActivity). */
     override var chatPartnerUser: User? = null
         private set
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
-        
+    override fun layoutRes(): Int = R.layout.latest_message_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
+
         viewHolder.itemView.findViewById<TextView>(R.id.text_textview_latest_message).text =
             chatMessage.text.take(120)
 
@@ -46,7 +46,7 @@ class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), Dialo
             if (user == null) return@fetchUser
             chatPartnerUser = user
             // ViewHolder мог быть переиспользован за время запроса — проверяем привязку
-            if (viewHolder.boundPosition != position) return@fetchUser
+            if (viewHolder.boundPosition() != position) return@fetchUser
             viewHolder.itemView.findViewById<TextView>(R.id.username_textview_latest_message).text = user.username
             ImageLoader.loadAvatarInto(
                 user.profileImageUrl,
@@ -54,21 +54,21 @@ class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), Dialo
             )
         }
     }
-
-    override fun getLayout(): Int = R.layout.latest_message_row
 }
 
 /**
  * Строка списка диалогов с картинкой. Декод base64 — в фоновом пуле (ImageLoader),
  * раньше выполнялся синхронно в bind() и фризил список на каждом бинде.
  */
-class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), DialogItem {
+class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, DialogItem {
 
     override var chatPartnerUser: User? = null
         private set
 
-    override fun bind(viewHolder: ViewHolder, position: Int) {
-        
+    override fun layoutRes(): Int = R.layout.latest_image_message_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
+
         val time = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault())
             .format(Date(chatMessage.timestamp * 1000))
         viewHolder.itemView.findViewById<TextView>(R.id.textDate_message_time2).text = time
@@ -93,7 +93,7 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
         ImageLoader.fetchUser(partnerId) { user ->
             if (user == null) return@fetchUser
             chatPartnerUser = user
-            if (viewHolder.boundPosition != position) return@fetchUser
+            if (viewHolder.boundPosition() != position) return@fetchUser
             viewHolder.itemView.findViewById<TextView>(R.id.username_kartinka_textview_latest_message).text = user.username
             ImageLoader.loadAvatarInto(
                 user.profileImageUrl,
@@ -101,6 +101,4 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
             )
         }
     }
-
-    override fun getLayout(): Int = R.layout.latest_image_message_row
 }

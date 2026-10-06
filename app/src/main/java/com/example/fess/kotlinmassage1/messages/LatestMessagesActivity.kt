@@ -26,9 +26,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.xwray.groupie.GroupAdapter
-import com.xwray.groupie.Item
-import com.xwray.groupie.ViewHolder
+import com.example.fess.kotlinmassage1.views.ChatRecyclerAdapter
 
 class LatestMessagesActivity : AppCompatActivity() {
 
@@ -42,7 +40,7 @@ class LatestMessagesActivity : AppCompatActivity() {
         const val TAG = "LatestMessages"
     }
 
-    private val adapter = GroupAdapter<ViewHolder>()
+    private val adapter = ChatRecyclerAdapter()
     // LinkedHashMap сохраняет порядок вставки Firebase (по ключам push)
     private val latestMessagesMap = LinkedHashMap<String, ChatMessage>()
     private var latestListener: ChildEventListener? = null
@@ -59,8 +57,8 @@ class LatestMessagesActivity : AppCompatActivity() {
 
         // Раньше здесь был жёсткий cast `item as LatestKartinkaMessageRow` — краш, когда
         // в списке попадался текстовый диалог. Теперь общий интерфейс DialogItem.
-        adapter.setOnItemClickListener { item, _ ->
-            val partner = (item as? DialogItem)?.chatPartnerUser ?: return@setOnItemClickListener
+        adapter.onItemClickListener = { item, _ ->
+            val partner = (item as? DialogItem)?.chatPartnerUser ?: return@onItemClickListener
             val intent = Intent(this, ChatLogActivity::class.java)
             intent.putExtra(NewMessageActivity.USER_KEY, partner)
             startActivity(intent)
@@ -72,12 +70,12 @@ class LatestMessagesActivity : AppCompatActivity() {
     }
 
     private fun refreshRecyclerViewMessages() {
-        val items: List<Item<*>> = latestMessagesMap.values.map { msg ->
-            if (msg.type == ChatMessage.TYPE_IMAGE) LatestKartinkaMessageRow(msg)
-            else LatestMessageRow(msg)
-        }
-        // было: adapter.clear() + add() по всему списку на КАЖДОЕ событие -> O(n^2) и фризы
-        adapter.updateWithDiff(items)
+        val items: List<com.example.fess.kotlinmassage1.views.ChatRowDelegate> =
+            latestMessagesMap.values.map { msg ->
+                if (msg.type == ChatMessage.TYPE_IMAGE) LatestKartinkaMessageRow(msg)
+                else LatestMessageRow(msg)
+            }
+        adapter.submit(items)
     }
 
     private fun listenForLatestMessages() {

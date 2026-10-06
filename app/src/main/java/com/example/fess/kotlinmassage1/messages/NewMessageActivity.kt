@@ -16,9 +16,9 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.example.fess.kotlinmassage1.models.User
 import com.squareup.picasso.Picasso
-import com.xwray.groupie.GroupAdapter
-import com.xwray.groupie.Item
-import com.xwray.groupie.ViewHolder
+import com.example.fess.kotlinmassage1.views.ChatRecyclerAdapter
+import com.example.fess.kotlinmassage1.views.ChatRowDelegate
+import androidx.recyclerview.widget.RecyclerView
 
 class NewMessageActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,17 +42,17 @@ class NewMessageActivity : AppCompatActivity() {
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
 
             override fun onDataChange(p0: DataSnapshot) {
-                val adapter = GroupAdapter<ViewHolder>()
+                val adapter = ChatRecyclerAdapter()
 
                 p0.children.forEach {
                     Log.d("NewMessage", it.toString())
                     val user = it.getValue(User::class.java)
                     if (user != null) {
-                        adapter.add(UserItem(user))
+                        adapter.append(UserItem(user))
                     }
                 }
 
-                adapter.setOnItemClickListener { item, view ->
+                adapter.onItemClickListener = { item, view ->
 
                     val userItem = item as UserItem
 
@@ -75,15 +75,15 @@ class NewMessageActivity : AppCompatActivity() {
     }
 }
 
-class UserItem(val user: User) : Item<ViewHolder>() {
-    override fun bind(viewHolder: ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("username_textview_new_message")).text = user.username
+class UserItem(val user: User) : ChatRowDelegate {
+    override val chatPartnerUser: User? get() = user
 
-        Picasso.get().load(user.profileImageUrl).into(viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.xwray.groupie.ViewIdResolver.idOf("imageview_new_message")))
-    }
+    override fun layoutRes(): Int = R.layout.user_row_new_message
 
-    override fun getLayout(): Int {
-        return R.layout.user_row_new_message
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
+        viewHolder.itemView.findViewById<android.widget.TextView>(R.id.username_textview_new_message).text = user.username
+
+        Picasso.get().load(user.profileImageUrl).into(viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(R.id.imageview_new_message))
     }
 }
 
