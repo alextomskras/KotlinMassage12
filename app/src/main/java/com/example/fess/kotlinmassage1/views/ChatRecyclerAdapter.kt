@@ -21,7 +21,7 @@ class ChatRecyclerAdapter(
     private val items: MutableList<ChatRowDelegate> = mutableListOf()
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    var onItemClickListener: ((ChatRowDelegate, View) -> Unit)? = null
+    var onItemClickListener: ((ChatRowDelegate) -> Unit)? = null
 
     fun submit(newItems: List<ChatRowDelegate>) {
         items.clear()
@@ -53,7 +53,7 @@ class ChatRecyclerAdapter(
         holder.itemView.setOnClickListener {
             val idx = holder.bindingAdapterPosition
             if (idx != RecyclerView.NO_POSITION && idx < items.size) {
-                onItemClickListener?.invoke(items[idx], holder.itemView)
+                onItemClickListener?.invoke(items[idx])
             }
         }
     }

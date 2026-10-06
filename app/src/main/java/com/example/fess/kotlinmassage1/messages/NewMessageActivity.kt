@@ -52,11 +52,10 @@ class NewMessageActivity : AppCompatActivity() {
                     }
                 }
 
-                adapter.onItemClickListener = { item, view ->
-
+                adapter.onItemClickListener = fun(item: com.example.fess.kotlinmassage1.views.ChatRowDelegate) {
                     val userItem = item as UserItem
 
-                    val intent = Intent(view.context, ChatLogActivity::class.java)
+                    val intent = Intent(this@NewMessageActivity, ChatLogActivity::class.java)
                     //   intent.putExtra(USER_KEY, userItem.user.username)
                     intent.putExtra(USER_KEY, userItem.user)
                     startActivity(intent)

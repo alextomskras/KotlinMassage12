@@ -57,8 +57,15 @@ class LatestMessagesActivity : AppCompatActivity() {
 
         // Раньше здесь был жёсткий cast `item as LatestKartinkaMessageRow` — краш, когда
         // в списке попадался текстовый диалог. Теперь общий интерфейс DialogItem.
-        adapter.onItemClickListener = { item, _ ->
-            val partner = (item as? DialogItem)?.chatPartnerUser ?: return@onItemClickListener
+        // ВАЖНО: onItemClickListener — это var типа ((ChatRowDelegate) -> Unit)?,
+        // поэтому присваивание идёт БЕЗ знака @. Если Android Studio («Fix with AI»,
+        // live template или автодополнение) вставит сюда символ @ перед именем —
+        // будет ошибка "Unresolved reference: @onItemClickListener". Это мусор IDE,
+        // а не код: удалите @ вручную или переключите редактор на Plain Text Mode.
+        // Форма "fun(...)" вместо лямбды выбрана специально: её нельзя ошибочно
+        // превратить в именованную метку return@..., т.к. возврат здесь обычный.
+        adapter.onItemClickListener = fun(item: com.example.fess.kotlinmassage1.views.ChatRowDelegate) {
+            val partner = item.chatPartnerUser ?: return
             val intent = Intent(this, ChatLogActivity::class.java)
             intent.putExtra(NewMessageActivity.USER_KEY, partner)
             startActivity(intent)
