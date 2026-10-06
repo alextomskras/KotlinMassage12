@@ -1,0 +1,40 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "user-messages": {
+      ".read": false,
+      "$myUid": {
+        ".read": "auth != null && auth.uid === $myUid",
+        ".write": "auth != null && (auth.uid === $myUid || root.child('users').child(auth.uid).exists())",
+        "$otherUid": {
+          ".indexOn": ["timestamp"]
+        }
+      }
+    },
+    "latest-messages": {
+      ".read": false,
+      "$myUid": {
+        ".read": "auth != null && auth.uid === $myUid",
+        ".write": "auth != null && (auth.uid === $myUid || root.child('users').child(auth.uid).exists())"
+      }
+    },
+    "user-tokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "outbox": {
+      ".read": false,
+      "$msgId": {
+        ".read": "auth != null && (auth.token.admin === true || auth.uid === data.child('fromId').val())",
+        ".write": "auth != null && auth.uid === data.child('fromId').val()"
+      }
+    }
+  }
+}
