@@ -35,8 +35,8 @@ class LatestMessagesActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_latest_messages)
 
-        recyclerview_latest_messages.adapter = adapter
-        recyclerview_latest_messages.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
+        findViewById<androidx.recyclerview.widget.RecyclerView>(com.example.fess.kotlinmassage1.R.id.recyclerview_latest_messages).adapter = adapter
+        findViewById<androidx.recyclerview.widget.RecyclerView>(com.example.fess.kotlinmassage1.R.id.recyclerview_latest_messages).addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
 
         // set item click listener on your adapter
 //        var imgMessages = refreshRecyclerViewMessages()
@@ -146,8 +146,8 @@ class LatestMessagesActivity : AppCompatActivity() {
         }
     }
 
-    override fun onOptionsItemSelected(item: MenuItem?): Boolean {
-        when (item?.itemId) {
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
             R.id.menu_new_message -> {
                 val intent = Intent(this, NewMessageActivity::class.java)
                 startActivity(intent)

@@ -24,12 +24,12 @@ class LoginActivity : AppCompatActivity() {
 
 
         setContentView(R.layout.activity_login)
-        login_button_login.setOnClickListener {
+        findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.login_button_login).setOnClickListener {
             performLogin()
 //
         }
 
-        back_to_register_login.setOnClickListener {
+        findViewById<android.widget.TextView>(com.example.fess.kotlinmassage1.R.id.back_to_register_login).setOnClickListener {
             finish()
         }
 
@@ -50,8 +50,8 @@ class LoginActivity : AppCompatActivity() {
 
 
     private fun performLogin() {
-        val email = email_edittext_login.text.toString()
-        val password = password_edittext_login.text.toString()
+        val email = findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.email_edittext_login).text.toString()
+        val password = findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.password_edittext_login).text.toString()
 
         warmUpToken()
 
@@ -64,7 +64,7 @@ class LoginActivity : AppCompatActivity() {
                 .addOnCompleteListener {
                     if (!it.isSuccessful) return@addOnCompleteListener
 
-                    Log.d("Login", "Successfully logged in: ${it.result!!.user.uid}")
+                    Log.d("Login", "Successfully logged in: ${it.result!!.user!!.uid}")
 
                     // Юзер залогинен — прописываем его токен в БД по схеме user-tokens/{uid}/{deviceId}
                     TokenStore.saveCurrentToken(this)

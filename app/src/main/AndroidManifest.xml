@@ -11,7 +11,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name=".registerlogin.RegisterActivity">
+        <activity android:name=".registerlogin.RegisterActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -33,15 +34,15 @@
 
         <!--FCM-->
         <meta-data
-            android:resource="@drawable/ic_fire_emoji"
-            android:name="com.google.firebase.messaging.default_notification_channel_id" />
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/notification_channel_id" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_fire_emoji" />
 
-        <!-- REMOVED: MyFirebaseInstanceIDService (class deleted, INSTANCE_ID API deprecated) -->
-        </service>
-        <service android:name=".service.MyFirebaseMessagingService">
+        <!-- REMOVED: MyFirebaseInstanceIDService (класс удалён; API Instance ID устарел, токен сохраняется через FirebaseMessaging.getInstance().token в util/TokenStore.kt) -->
+        <service android:name=".service.MyFirebaseMessagingService"
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>

@@ -48,10 +48,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
     }
 
-    override fun onMessageReceived(remoteMessage: RemoteMessage?) {
-        if (remoteMessage == null) return
-
-        val data = remoteMessage.data ?: emptyMap()
+    override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        val data = remoteMessage.data
         val fromId = data["fromId"]
         val title = remoteMessage.notification?.title ?: data["title"] ?: "Новое сообщение"
         val body = remoteMessage.notification?.body ?: data["body"] ?: ""
