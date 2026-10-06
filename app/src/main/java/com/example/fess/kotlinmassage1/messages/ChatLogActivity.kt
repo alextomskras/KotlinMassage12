@@ -193,12 +193,19 @@ class ChatLogActivity : AppCompatActivity() {
         updates["/${DbPaths.latestConversation(fromId, toId)}"] = chatMessage
         updates["/${DbPaths.latestConversation(toId, fromId)}"] = chatMessage
         updates["/${DbPaths.OUTBOX}/$outboxKey"] = mapOf(
+            // формат согласован с backend/app/outbox_relay.py: поиск uid получателя
+            // идёт по полю "to" (username), текст — "text", тип — "msgType"=="IMAGE"
             "msgId" to chatMessage.id,
             "fromId" to fromId,
             "toId" to toId,
+            "to" to (toUser?.username ?: ""),
+            "senderName" to (LatestMessagesActivity.currentUser?.username ?: ""),
+            "text" to preview,
             "type" to msgType,
+            "msgType" to if (msgType == ChatMessage.TYPE_IMAGE) "IMAGE" else "TEXT",
             "preview" to preview,
-            "timestamp" to nowSec
+            "timestamp" to nowSec,
+            "sent" to false
         )
 
         db.updateChildren(updates)
