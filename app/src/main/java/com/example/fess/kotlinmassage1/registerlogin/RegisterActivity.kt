@@ -86,8 +86,7 @@ class RegisterActivity : AppCompatActivity() {
             return
         }
 
-        Log.d("RegisterActivity", "Email is: " + email)
-        Log.d("RegisterActivity", "Password is: $password")
+        // НЕ логируем пароль и email — учётные данные не должны попадать в logcat
         //Firebase Auth for create User whith Email and password
 
         FirebaseAuth.getInstance().createUserWithEmailAndPassword(email, password)
