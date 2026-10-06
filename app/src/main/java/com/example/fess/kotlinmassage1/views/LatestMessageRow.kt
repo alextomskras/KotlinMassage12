@@ -10,6 +10,9 @@ import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.squareup.picasso.Picasso
 import com.xwray.groupie.Item
+// ViewHolder из com.xwray.groupie — это typealias на RecyclerView.ViewHolder (itemView public).
+// Раньше здесь был свой класс с полем itemView, и если в classpath APK попадал настоящий
+// groupie 2.x (package-private itemView), на устройстве был IllegalAccessError (краш bind()).
 import com.xwray.groupie.ViewHolder
 import java.text.SimpleDateFormat
 import java.util.Date

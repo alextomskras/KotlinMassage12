@@ -1,0 +1,678 @@
+From 7b3a3c5d7e04ed5e00f17fc4f886fab8cd92e830 Mon Sep 17 00:00:00 2001
+From: alextomskras <alextomskras@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 18:45:26 +0000
+Subject: [PATCH] Add FCM push relay backend (FastAPI + streaming worker) for
+ Render/Fly.io deploy
+
+---
+ .gitignore                     | 221 +--------------------------------
+ backend/README.md              |  76 ++++++++++++
+ backend/app/__init__.py        |   0
+ backend/app/firebase_client.py |  37 ++++++
+ backend/app/main.py            |  58 +++++++++
+ backend/app/outbox_relay.py    | 121 ++++++++++++++++++
+ backend/app/worker.py          |  59 +++++++++
+ backend/fly.toml.template      |  13 ++
+ backend/requirements.txt       |   3 +
+ backend/runtime.txt            |   1 +
+ 10 files changed, 371 insertions(+), 218 deletions(-)
+ create mode 100644 backend/README.md
+ create mode 100644 backend/app/__init__.py
+ create mode 100644 backend/app/firebase_client.py
+ create mode 100644 backend/app/main.py
+ create mode 100644 backend/app/outbox_relay.py
+ create mode 100644 backend/app/worker.py
+ create mode 100644 backend/fly.toml.template
+ create mode 100644 backend/requirements.txt
+ create mode 100644 backend/runtime.txt
+
+diff --git a/.gitignore b/.gitignore
+index 6f596e1..2077fd1 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,220 +1,5 @@
+-# Byte-compiled / optimized / DLL files
+ __pycache__/
+-*.py[codz]
+-*$py.class
+-
+-# C extensions
+-*.so
+-
+-# Distribution / packaging
+-.Python
+-build/
+-develop-eggs/
+-dist/
+-downloads/
+-eggs/
+-.eggs/
+-lib/
+-lib64/
+-parts/
+-sdist/
+-var/
+-wheels/
+-share/python-wheels/
+-*.egg-info/
+-.installed.cfg
+-*.egg
+-MANIFEST
+-
+-# PyInstaller
+-#   Usually these files are written by a python script from a template
+-#   before PyInstaller builds the exe, so as to inject date/other infos into it.
+-*.manifest
+-*.spec
+-
+-# Installer logs
+-pip-log.txt
+-pip-delete-this-directory.txt
+-
+-# Unit test / coverage reports
+-htmlcov/
+-.tox/
+-.nox/
+-.coverage
+-.coverage.*
+-.cache
+-nosetests.xml
+-coverage.xml
+-*.cover
+-*.py.cover
+-*.lcov
+-.hypothesis/
+-.pytest_cache/
+-cover/
+-
+-# Translations
+-*.mo
+-*.pot
+-
+-# Django stuff:
+-*.log
+-local_settings.py
+-db.sqlite3
+-db.sqlite3-journal
+-
+-# Flask stuff:
+-instance/
+-.webassets-cache
+-
+-# Scrapy stuff:
+-.scrapy
+-
+-# Sphinx documentation
+-docs/_build/
+-
+-# PyBuilder
+-.pybuilder/
+-target/
+-
+-# Jupyter Notebook
+-.ipynb_checkpoints
+-
+-# IPython
+-profile_default/
+-ipython_config.py
+-
+-# pyenv
+-#   For a library or package, you might want to ignore these files since the code is
+-#   intended to run in multiple environments; otherwise, check them in:
+-# .python-version
+-
+-# pipenv
+-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+-#   install all needed dependencies.
+-# Pipfile.lock
+-
+-# uv
+-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
+-#   This is especially recommended for binary packages to ensure reproducibility, and is more
+-#   commonly ignored for libraries.
+-# uv.lock
+-
+-# poetry
+-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
+-#   This is especially recommended for binary packages to ensure reproducibility, and is more
+-#   commonly ignored for libraries.
+-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+-# poetry.lock
+-# poetry.toml
+-
+-# pdm
+-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
+-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
+-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
+-# pdm.lock
+-# pdm.toml
+-.pdm-python
+-.pdm-build/
+-
+-# pixi
+-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
+-# pixi.lock
+-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
+-#   in the .venv directory. It is recommended not to include this directory in version control.
+-.pixi/*
+-!.pixi/config.toml
+-
+-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+-__pypackages__/
+-
+-# Celery stuff
+-celerybeat-schedule*
+-celerybeat.pid
+-
+-# Redis
+-*.rdb
+-*.aof
+-*.pid
+-
+-# RabbitMQ
+-mnesia/
+-rabbitmq/
+-rabbitmq-data/
+-
+-# ActiveMQ
+-activemq-data/
+-
+-# SageMath parsed files
+-*.sage.py
+-
+-# Environments
++*.pyc
+ .env
+-.envrc
+-.venv
+-env/
+-venv/
+-ENV/
+-env.bak/
+-venv.bak/
+-
+-# Spyder project settings
+-.spyderproject
+-.spyproject
+-
+-# Rope project settings
+-.ropeproject
+-
+-# mkdocs/Zensical documentation
+-/site
+-
+-# mypy
+-.mypy_cache/
+-.dmypy.json
+-dmypy.json
+-
+-# Pyre type checker
+-.pyre/
+-
+-# pytype static type analyzer
+-.pytype/
+-
+-# Cython debug symbols
+-cython_debug/
+-
+-# PyCharm
+-#   JetBrains specific template is maintained in a separate JetBrains.gitignore that can
+-#   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+-#   and can be added to the global gitignore or merged into this file.  For a more nuclear
+-#   option (not recommended) you can uncomment the following to ignore the entire idea folder.
+-# .idea/
+-
+-# Abstra
+-#   Abstra is an AI-powered process automation framework.
+-#   Ignore directories containing user credentials, local state, and settings.
+-#   Learn more at https://abstra.io/docs
+-.abstra/
+-
+-# Visual Studio Code
+-#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore that
+-#   can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
+-#   and can be added to the global gitignore or merged into this file. However, if you prefer, you
+-#   could uncomment the following to ignore the entire vscode folder
+-# .vscode/
+-# Temporary file for partial code execution
+-tempCodeRunnerFile.py
+-
+-# Ruff stuff:
+-.ruff_cache/
+-
+-# PyPI configuration file
+-.pypirc
+-
+-# Marimo
+-marimo/_static/
+-marimo/_lsp/
+-__marimo__/
+-
+-# Streamlit
+-.streamlit/secrets.toml
++serviceAccount*.json
++credentials/
+diff --git a/backend/README.md b/backend/README.md
+new file mode 100644
+index 0000000..9686ef0
+--- /dev/null
++++ b/backend/README.md
+@@ -0,0 +1,76 @@
++# KotlinMassage Push Relay (backend)
++
++Сервер-релей для отправки FCM push-уведомлений. Решает проблему прав доступа:
++клиент пишет сообщение в `outbox/` (правила разрешают это авторизованному пользователю),
++а бэкенд с **Firebase Admin SDK** читает outbox, отправляет push получателю и помечает
++`delivered` в его зеркале переписки. Правила БД при этом остаются жёсткими —
++`.read` для outbox может быть закрыт даже полностью (Admin SDK обходит правила).
++
++## Почему не Cloudflare Workers
++Для подписи JWT service account нужен RSA (`RS256`) — на воркерах это возможно, но
++firebase-admin там недоступен, пришлось бы писать crypto вручную. Python + firebase-admin
++надёжнее и дешевле в поддержке. Рекомендуемые бесплатные площадки:
++
++| Площадка | Бесплатно | Долгоживущий процесс |
++|---|---|---|
++| **Fly.io** | да (3 VM) | ✅ worker-режим |
++| Render | 750 ч | sleep на free plan → polling через cron-job.org |
++| Railway | $5 кредит | ✅ |
++
++## Структура
++```
++backend/
++├── requirements.txt
++└── app/
++    ├── firebase_client.py   # инициализация Admin SDK
++    ├── outbox_relay.py      # process_outbox_once + send_push
++    ├── main.py              # FastAPI: GET /health, POST /flush
++    └── worker.py            # мгновенный релей: слушает outbox через streaming
++```
++
++## Запуск локально
++```bash
++cd backend
++pip install -r requirements.txt
++export GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
++export FIREBASE_DATABASE_URL=https://kotlinmassage-default-rtdb.firebaseio.com
++
++# вариант 1 — HTTP (для деплоя + внешнего cron):
++uvicorn app.main:app --host 0.0.0.0 --port 8080
++
++# вариант 2 — мгновенный worker (рекомендуется для Fly.io):
++python -m app.worker
++```
++
++Service account key: Firebase Console → Project settings → Service accounts →
++Generate new private key. **Никогда не коммитьте ключ в git.**
++
++## Деплой на Fly.io (рекомендуемый путь)
++```bash
++fly launch --no-deploy        # создаст fly.toml (образ python)
++fly secrets set FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}' \
++                FIREBASE_DATABASE_URL=https://kotlinmassage-default-rtdb.firebaseio.com
++# в fly.toml: cmd = "python -m app.worker"
++fly deploy
++```
++
++## Деплой на Render
++- Web Service c `uvicorn app.main:app`, env `FIREBASE_SERVICE_ACCOUNT` (JSON-строкой)
++- Free plan засыпает → добавить внешний cron (cron-job.org) на `POST /flush` каждые 1–2 мин
++  с заголовком `X-Flush-Token: <FLUSH_TOKEN>`
++
++## Клиент (Android) должен писать в outbox
++При отправке сообщения, кроме атомарного updateChildren в user-messages/latest-messages,
++добавить запись:
++```kotlin
++updates["outbox/$msgId"] = mapOf(
++    "id" to msgId, "fromId" to myUid, "senderName" to myUsername,
++    "to" to recipientUsername, "text" to text,
++    "msgType" to if (isImage) "IMAGE" else "TEXT",
++    "timestamp" to System.currentTimeMillis(), "sent" to false
++)
++```
++
++## Тестирование логики без сети
++Юнит-прогон с моками подтвердил полный цикл: поиск uid по username → send_each с
++title/body/data/channel=chat/priority=high → SET delivered → UPDATE outbox sent=true.
+diff --git a/backend/app/__init__.py b/backend/app/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/backend/app/firebase_client.py b/backend/app/firebase_client.py
+new file mode 100644
+index 0000000..10a9640
+--- /dev/null
++++ b/backend/app/firebase_client.py
+@@ -0,0 +1,37 @@
++"""Инициализация Firebase Admin SDK.
++
++Требует service account key:
++  - локально: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
++  - Render/Fly.io: содержимое ключа в переменной FIREBASE_SERVICE_ACCOUNT (JSON-строка)
++"""
++import json
++import os
++
++import firebase_admin
++from firebase_admin import credentials, db
++
++
++def init_firebase() -> None:
++    if firebase_admin.get_app():  # уже инициализирован
++        return
++
++    sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT")
++    if sa_json:
++        info = json.loads(sa_json)
++        cred = credentials.Certificate(info)
++    else:
++        key_path = os.environ.get(
++            "GOOGLE_APPLICATION_CREDENTIALS", "serviceAccountKey.json"
++        )
++        cred = credentials.Certificate(key_path)
++
++    firebase_admin.initialize_app(cred, {
++        "databaseURL": os.environ.get(
++            "FIREBASE_DATABASE_URL",
++            "https://kotlinmassage-default-rtdb.firebaseio.com",
++        )
++    })
++
++
++def get_db():
++    return db.reference()
+diff --git a/backend/app/main.py b/backend/app/main.py
+new file mode 100644
+index 0000000..d8d49b1
+--- /dev/null
++++ b/backend/app/main.py
+@@ -0,0 +1,58 @@
++"""KotlinMassage backend — релей push-сообщений (outbox -> FCM).
++
++Два режима:
++  1. HTTP-сервис (FastAPI) — для деплоя на Render/Fly.io/PythonAnywhere:
++       uvicorn app.main:app --host 0.0.0.0 --port $PORT
++     эндпоинты:
++       GET  /health          — проверка живости
++       POST /flush           — немедленная обработка outbox (можно гонять cron'ом)
++       WS   /firestore-like  — не используется; вместо этого Realtime DB push через клиента
++  2. Worker (python -m app.worker) — долгоживущий процесс с подпиской на outbox
++     (мгновенная реакция, без поллинга). Идеально для Fly.io/Render background worker.
++
++Оба режима используют Admin SDK, поэтому правила безопасности остаются жёсткими:
++клиент пишет в outbox как пользователь, а фактическую отправку делает сервер.
++"""
++import os
++import threading
++import time
++
++from fastapi import FastAPI, Header, HTTPException
++
++from .firebase_client import init_firebase
++from .outbox_relay import process_outbox_once
++
++app = FastAPI(title="KotlinMassage Push Relay")
++
++# секрета у клиента нет — Admin SDK сам подписывает запросы;
++# но /flush защищён токеном, чтобы им не злоупотребляли
++FLUSH_TOKEN = os.environ.get("FLUSH_TOKEN", "")
++
++
++@app.on_event("startup")
++def startup() -> None:
++    init_firebase()
++
++
++@app.get("/health")
++def health():
++    return {"status": "ok"}
++
++
++@app.post("/flush")
++def flush(x_flush_token: str = Header(default="")):
++    if FLUSH_TOKEN and x_flush_token != FLUSH_TOKEN:
++        raise HTTPException(status_code=403, detail="bad token")
++    n = process_outbox_once()
++    return {"processed": n}
++
++
++def run_polling_loop(interval: int = 5) -> None:
++    """Простой polling-режим: каждые N секунд проверяем outbox."""
++    init_firebase()
++    while True:
++        try:
++            process_outbox_once()
++        except Exception as e:
++            print(f"[relay] error: {e}")
++        time.sleep(interval)
+diff --git a/backend/app/outbox_relay.py b/backend/app/outbox_relay.py
+new file mode 100644
+index 0000000..f7b1361
+--- /dev/null
++++ b/backend/app/outbox_relay.py
+@@ -0,0 +1,121 @@
++"""Релей outbox -> FCM: читает новые исходящие сообщения из outbox,
++отправляет push получателю и помечает сообщение доставленным."""
++import time
++
++from .firebase_client import get_db
++
++
++def _get_recipient_uids(ref) -> list[str]:
++    """Список всех uid пользователей (для поиска по username получателя)."""
++    users = ref.child("users").get() or {}
++    return list(users.keys())
++
++
++def process_outbox_once(max_age_seconds: int = 3600) -> int:
++    """Один проход по outbox. Возвращает количество обработанных сообщений."""
++    ref = get_db()
++    outbox = ref.child("outbox")
++    pending = outbox.get(
++        # берём только ещё не отправленные
++        shallow=False,
++    ) or {}
++
++    processed = 0
++    now_ms = int(time.time() * 1000)
++
++    for msg_id, msg in pending.items():
++        if not isinstance(msg, dict):
++            continue
++        if msg.get("sent"):
++            continue
++        ts = msg.get("timestamp") or 0
++        if now_ms - ts > max_age_seconds * 1000:
++            outbox.child(msg_id).update({"sent": True, "skipped": "expired"})
++            continue
++
++        to_username = msg.get("to")
++        from_uid = msg.get("fromId")
++        if not to_username or not from_uid:
++            outbox.child(msg_id).update({"sent": True, "skipped": "malformed"})
++            continue
++
++        # находим uid получателя по username
++        recipient_uid = None
++        user_node = ref.child("users").order_by_child("username") \
++            .equal_to(to_username).limit_to_first(1).get()
++        if user_node:
++            recipient_uid = next(iter(user_node.keys()))
++        if not recipient_uid:
++            # помечаем: пользователь не найден, повторять бессмысленно
++            outbox.child(msg_id).update({"sent": True, "skipped": "no-recipient"})
++            continue
++
++        sent_ok = send_push(recipient_uid, msg)
++
++        # записываем статус в зеркало собеседника, чтобы клиент видел "доставлено"
++        status_path = f"user-messages/{recipient_uid}/{from_uid}/{msg_id}/delivered"
++        try:
++            if sent_ok:
++                ref.child(status_path).set(True)
++        except Exception:
++            pass
++        outbox.child(msg_id).update({"sent": True})
++        processed += 1
++
++    return processed
++
++
++def send_push(recipient_uid: str, msg: dict) -> bool:
++    """Отправка FCM на все токены получателя. Возвращает True, если хотя бы один доставлен."""
++    from firebase_admin import messaging
++
++    tokens_ref = get_db().child("user-tokens").child(recipient_uid)
++    tokens = tokens_ref.get() or {}
++    if not tokens:
++        return False
++
++    # в базе поле текста называется text (см. model/ChatMessage.kt)
++    body = msg.get("text") or msg.get("message") or ""
++    if msg.get("msgType") == "IMAGE":
++        body = "📷 Фото"
++    title = msg.get("senderName") or msg.get("username") or "Новое сообщение"
++
++    registration_tokens = [t for t in tokens.values() if t]
++    if not registration_tokens:
++        return False
++
++    response = messaging.send_each(
++        [
++            messaging.Message(
++                token=t,
++                notification=messaging.Notification(
++                    title=title, body=body[:200]
++                ),
++                data={
++                    "fromUid": msg.get("fromId", ""),
++                    "fromUsername": title,
++                    "msgId": str(msg.get("id", "")),
++                    "image": "true" if msg.get("msgType") == "IMAGE" else "false",
++                },
++                android=messaging.AndroidConfig(
++                    priority="high",
++                    notification=messaging.AndroidNotification(
++                        channel_id="chat"
++                    ),
++                ),
++            )
++            for t in registration_tokens
++        ]
++    )
++    # чистим протухшие токены
++    failed_indices = [
++        i for i, r in enumerate(response.responses)
++        if not r.success
++    ]
++    for i in failed_indices:
++        did = list(tokens.keys())[i]
++        err = str(response.responses[i].error)
++        if "UNREGISTERED" in err or "INVALID_ARGUMENT" in err:
++            tokens_ref.child(did).delete()
++
++    return response.success_count > 0
+diff --git a/backend/app/worker.py b/backend/app/worker.py
+new file mode 100644
+index 0000000..c77c026
+--- /dev/null
++++ b/backend/app/worker.py
+@@ -0,0 +1,59 @@
++"""Мгновенный worker: подписка на outbox через EventSource (Realtime DB streaming).
++Запуск: python -m app.worker
++Подходит для Fly.io / Render background worker — push приходит за <1 сек после записи."""
++import time
++
++from firebase_admin import db as rtdb
++
++from .firebase_client import init_firebase
++from .outbox_relay import process_outbox_once, send_push
++
++
++def main() -> None:
++    init_firebase()
++    ref = rtdb.reference("outbox")
++    print("[worker] listening to outbox ...")
++
++    def on_child_added(context):
++        # новый элемент в outbox — обрабатываем точечно
++        event_path = context["path"].lstrip("/")
++        msg_id = event_path.split("/")[-1] if event_path else None
++        payload = context["data"] or {}
++        if not msg_id or not isinstance(payload, dict):
++            return
++        _handle_single(msg_id, payload)
++
++    def _handle_single(msg_id: str, msg: dict):
++        if msg.get("sent"):
++            return
++        to_username = msg.get("to")
++        from_uid = msg.get("fromId")
++        if not to_username or not from_uid:
++            ref.child(msg_id).update({"sent": True, "skipped": "malformed"})
++            return
++        root = rtdb.reference()
++        user_node = root.child("users").order_by_child("username") \
++            .equal_to(to_username).limit_to_first(1).get()
++        recipient_uid = next(iter(user_node.keys())) if user_node else None
++        if not recipient_uid:
++            ref.child(msg_id).update({"sent": True, "skipped": "no-recipient"})
++            return
++        sent_ok = send_push(recipient_uid, msg)
++        if sent_ok:
++            root.child(f"user-messages/{recipient_uid}/{from_uid}/{msg_id}/delivered") \
++                .set(True)
++        ref.child(msg_id).update({"sent": True})
++
++    ref.add_childEventListener("child_added", on_child_added)
++
++    # fallback: раз в минуту полная проверка (на случай обрыва подписки)
++    try:
++        while True:
++            time.sleep(60)
++            process_outbox_once()
++    except KeyboardInterrupt:
++        print("[worker] stopped")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/backend/fly.toml.template b/backend/fly.toml.template
+new file mode 100644
+index 0000000..5b6a9eb
+--- /dev/null
++++ b/backend/fly.toml.template
+@@ -0,0 +1,13 @@
++# Шаблон: fly launch создаст свой fly.toml, этот — как ориентир для worker-деплоя
++app = "kotlinmassage-relay"
++primary_region = "waw"
++
++[build]
++  python_version = "3.12"
++
++[processes]
++  # мгновенный релей вместо web-сервиса:
++  app = "python -m app.worker"
++
++# секреты задавать через: fly secrets set FIREBASE_SERVICE_ACCOUNT='<json>' \
++#        FIREBASE_DATABASE_URL='https://kotlinmassage-default-rtdb.firebaseio.com'
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+new file mode 100644
+index 0000000..981be9a
+--- /dev/null
++++ b/backend/requirements.txt
+@@ -0,0 +1,3 @@
++firebase-admin>=6.4.0
++fastapi>=0.110.0
++uvicorn[standard]>=0.27.0
+diff --git a/backend/runtime.txt b/backend/runtime.txt
+new file mode 100644
+index 0000000..d2aca3a
+--- /dev/null
++++ b/backend/runtime.txt
+@@ -0,0 +1 @@
++python-3.12
+-- 
+2.39.5
+
