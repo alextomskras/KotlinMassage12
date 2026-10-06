@@ -19,10 +19,17 @@ import androidx.recyclerview.widget.RecyclerView
 // так что оба варианта совпадают всегда.
 typealias ViewHolder = RecyclerView.ViewHolder
 
-/** Защита асинхронных колбэков от переиспользования ячейки (бывш. ViewHolder.boundPosition). */
-var ViewHolder.boundPosition: Int
-    get() = (tag as? Int) ?: RecyclerView.NO_POSITION
-    set(value) { tag = value }
+const val TAG_BOUND_POSITION = 0x7f0e0b01
+
+/** Защита асинхронных колбэков от переиспользования ячейки (бывш. ViewHolder.boundPosition).
+ *  Читаем через itemView.getTag(id), а не this.tag: у RecyclerView.ViewHolder метода tag{} нет —
+ *  он определён только на View. */
+val ViewHolder.boundPosition: Int
+    get() = (itemView.getTag(TAG_BOUND_POSITION) as? Int) ?: RecyclerView.NO_POSITION
+
+internal fun ViewHolder.setBoundPosition(position: Int) {
+    itemView.setTag(TAG_BOUND_POSITION, position)
+}
 
 /** Замена Kotlin Synthetics: holder["some_id"] -> findViewById(R.id.some_id). */
 operator fun ViewHolder.get(name: String): android.view.View? =
@@ -31,10 +38,6 @@ operator fun ViewHolder.get(name: String): android.view.View? =
 abstract class Item<VH : ViewHolder> {
     abstract fun getLayout(): Int
     abstract fun bind(viewHolder: VH, position: Int)
-    open fun createViewHolder(view: android.view.View): VH {
-        @Suppress("UNCHECKED_CAST")
-        return RecyclerView.ViewHolder(view) as VH
-    }
     open val id: Long get() = hashCode().toLong()
 }
 
@@ -99,14 +102,15 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
     override fun getItemCount(): Int = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        // ViewHolder здесь = RecyclerView.ViewHolder (typealias выше) — конкретный класс,
+        // создаём напрямую; никаких кастов и createViewHolder с дженериком быть не должно.
         val layoutId = items[firstNonNegative(viewType)].getLayout()
         val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
-        @Suppress("UNCHECKED_CAST")
-        return (items[firstNonNegative(viewType)] as Item<ViewHolder>).createViewHolder(view)
+        return ViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.boundPosition = position
+        holder.setBoundPosition(position)
         @Suppress("UNCHECKED_CAST")
         (items[position] as Item<ViewHolder>).bind(holder, position)
         holder.itemView.setOnClickListener {
