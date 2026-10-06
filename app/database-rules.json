@@ -1,0 +1,39 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "user-messages": {
+      ".read": false,
+      "$myUid": {
+        ".read": "auth != null && auth.uid === $myUid",
+        ".write": "auth != null && auth.uid === $myUid",
+        "$otherUid": {
+          ".indexOn": ["timestamp"]
+        }
+      }
+    },
+    "latest-messages": {
+      ".read": false,
+      "$myUid": {
+        ".read": "auth != null && auth.uid === $myUid",
+        ".write": "auth != null && auth.uid === $myUid"
+      }
+    },
+    "user-tokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "outbox": {
+      "$pushId": {
+        ".read": "auth != null && auth.token.admin === true",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

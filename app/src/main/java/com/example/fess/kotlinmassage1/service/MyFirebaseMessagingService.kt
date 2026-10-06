@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.os.Build
-import android.support.v4.app.NotificationCompat
+import androidx.core.app.NotificationCompat
 import android.util.Log
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.ChatLogActivity
@@ -38,7 +38,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     private val TAG = "FCM_Service"
 
-    override fun onNewToken(token: String?) {
+    override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "onNewToken received")
         // Сохраняем по схеме /user-tokens/{uid}/{deviceId}.

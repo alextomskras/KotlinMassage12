@@ -1,9 +1,13 @@
 package com.example.fess.kotlinmassage1.messages
 
+
+
+
+
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
@@ -23,11 +27,9 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.xwray.groupie.GroupAdapter
 import com.xwray.groupie.ViewHolder
-import kotlinx.android.synthetic.main.activity_chat_log.*
 import java.util.*
 
-//import kotlinx.android.synthetic.main.notification_template_lines_media.view.*
-
+//
 class ChatLogActivity : AppCompatActivity() {
 
     companion object {
@@ -97,13 +99,18 @@ class ChatLogActivity : AppCompatActivity() {
 
     private fun sendSelectedImage() {
         val uri = selectedImageUri ?: return
-        val b64 = ImageUtils.compressToBase64(this, uri)
-        if (b64 == null) {
-            Toast.makeText(this, "Не удалось обработать картинку", Toast.LENGTH_SHORT).show()
-            resetImagePickerUi()
-            return
-        }
-        performSendImage(b64)
+        // Сжатие + base64 — тяжёлая операция, уводим с main-потока.
+        Thread {
+            val b64 = ImageUtils.compressToBase64(this, uri)
+            runOnUiThread {
+                if (b64 == null) {
+                    Toast.makeText(this, "Не удалось обработать картинку", Toast.LENGTH_SHORT).show()
+                } else {
+                    performSendImage(b64)
+                }
+                resetImagePickerUi()
+            }
+        }.start()
     }
 
     private fun resetImagePickerUi() {
