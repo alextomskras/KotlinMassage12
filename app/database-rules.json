@@ -32,9 +32,9 @@
       }
     },
     "outbox": {
-      "$pushId": {
-        ".read": "auth != null && (auth.token.admin === true || auth.uid === $pushId)",
-        ".write": "auth != null"
+      "$msgId": {
+        ".read": "auth != null && auth.token.admin === true",
+        ".write": "auth != null && auth.uid === data.child('fromId').val()"
       }
     }
   }
