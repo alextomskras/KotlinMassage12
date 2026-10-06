@@ -1,1 +1,9 @@
-(empty)
+.gradle/
+build/
+captures/
+local.properties
+*.iml
+.idea/
+.DS_Store
+*.apk
+*.zip
