@@ -31,9 +31,15 @@ operator fun ViewHolder.get(name: String): android.view.View? =
 abstract class Item<VH : ViewHolder> {
     abstract fun getLayout(): Int
     abstract fun bind(viewHolder: VH, position: Int)
-    open fun createViewHolder(view: android.view.View): VH {
-        @Suppress("UNCHECKED_CAST")
-        return RecyclerView.ViewHolder(view) as VH
+    /**
+     * Как в настоящем Groupie 2.x: фабричный метод возвращает базовый ViewHolder.
+     * Все экраны проекта параметризованы Item<ViewHolder>, поэтому дженерик-VH здесь не нужен —
+     * прежняя версия с "return RecyclerView.ViewHolder(view) as VH" не компилировалась
+     * (Cannot create an instance of an abstract class: typealias ViewHolder -> RecyclerView.ViewHolder).
+     */
+    open fun createViewHolder(parent: ViewGroup): ViewHolder {
+        val view = LayoutInflater.from(parent.context).inflate(getLayout(), parent, false)
+        return ViewHolder(view)
     }
     open val id: Long get() = hashCode().toLong()
 }
@@ -99,10 +105,7 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
     override fun getItemCount(): Int = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val layoutId = items[firstNonNegative(viewType)].getLayout()
-        val view = LayoutInflater.from(parent.context).inflate(layoutId, parent, false)
-        @Suppress("UNCHECKED_CAST")
-        return (items[firstNonNegative(viewType)] as Item<ViewHolder>).createViewHolder(view)
+        return items[firstNonNegative(viewType)].createViewHolder(parent)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
