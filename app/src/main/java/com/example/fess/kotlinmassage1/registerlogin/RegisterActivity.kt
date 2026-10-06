@@ -10,10 +10,10 @@ import android.util.Log
 import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
-import com.example.fess.kotlinmassage1.service.MyFirebaseMessagingService
+import com.example.fess.kotlinmassage1.models.User
+import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.iid.FirebaseInstanceId
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.android.synthetic.main.activity_register.*
 import java.util.*
@@ -101,7 +101,10 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun uploadImageToFirebaseStorage() {
-        if (selectedPhotoUri == null) return
+        if (selectedPhotoUri == null) {
+            saveUserToFirebaseDatabase("")
+            return
+        }
 
         val filename = UUID.randomUUID().toString()
         val ref = FirebaseStorage.getInstance().getReference("/images/$filename")
@@ -120,19 +123,9 @@ class RegisterActivity : AppCompatActivity() {
                 .addOnFailureListener {
                     // do on fail
                     Log.d("Register", "File location: ${it.message}")
+                    saveUserToFirebaseDatabase("")
                 }
 
-    }
-
-    private fun refreshTokens(): String? {
-        val newToken = FirebaseInstanceId.getInstance().token
-        Log.d("newToken", (newToken))
-        Toast.makeText(this, "Please fill out $newToken", Toast.LENGTH_SHORT).show()
-        return newToken
-
-        if (newToken != null) {
-            MyFirebaseMessagingService().saveTokenToFirebaseDatabase(newToken)
-        }
     }
 
     private fun saveUserToFirebaseDatabase(profileImageUrl: String) {
@@ -141,13 +134,14 @@ class RegisterActivity : AppCompatActivity() {
         val uid = FirebaseAuth.getInstance().uid ?: ""
         val ref = FirebaseDatabase.getInstance().getReference("/users/$uid")
 
-        val newToken = refreshTokens().toString()
-        Log.d("saveNewToken", "$newToken")
-        val user = User(uid, username_edittext_register.text.toString(), profileImageUrl, newToken)
+        val user = User(uid, username_edittext_register.text.toString(), profileImageUrl)
 
         ref.setValue(user)
                 .addOnSuccessListener {
                     Log.d("Register", "Finally save user to firebasedatabase")
+
+                    // Сохраняем FCM-токен нового юзера по схеме /user-tokens/{uid}/{deviceId}
+                    TokenStore.saveCurrentToken(this)
 
                     val intent = Intent(this, LatestMessagesActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -162,6 +156,3 @@ class RegisterActivity : AppCompatActivity() {
 
 }
 
-class User(val uid: String, val username: String, val profileImageUrl: String, val newToken: String) {
-    constructor() : this("", "", "", "")
-}

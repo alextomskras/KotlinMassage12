@@ -77,20 +77,10 @@ class LatestMessagesActivity : AppCompatActivity() {
 
     val latestMessagesMap = HashMap<String, ChatMessage>()
 
-    private fun refreshRecyclerViewMessages(imgMessages: String) {
+    private fun refreshRecyclerViewMessages() {
         adapter.clear()
         latestMessagesMap.values.forEach {
-            Log.d(TAG, "IF_listenFor_mess $imgMessages")
-//            if (imgMessages == "picTures"){
-//                adapter.add(LatestKartinkaMessageRow(it))
-//
-//            }else{
-//                Log.d(TAG, "IF_listenFor_mess $imgMessages")
-//                adapter.add(LatestMessageRow(it))
-//
-//            }
             adapter.add(LatestKartinkaMessageRow(it))
-            //adapter.add(LatestMessageRow(it))
         }
     }
 
@@ -100,53 +90,15 @@ class LatestMessagesActivity : AppCompatActivity() {
         ref.addChildEventListener(object : ChildEventListener {
             override fun onChildAdded(p0: DataSnapshot, p1: String?) {
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
-                val substChatMessage = chatMessage.text.substringBefore('.')
-                val test1 = chatMessage.text
-                val time1 = chatMessage.timestamp * 1000
-                val sfd = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
-                val sfd1 = sfd.format(Date(time1)).toString()
-                Log.d(TAG, "listenFor_mess $test1")
-                Log.d(TAG, "latest_DATE!!!! $sfd1")
-                if (substChatMessage == "https://firebasestorage") {
-                    var imgMessages = "picTures"
-                    Log.d(TAG, "pic_DATE!!!! $imgMessages")
-                    latestMessagesMap[p0.key!!] = chatMessage
-                    refreshRecyclerViewMessages(imgMessages)
-
-                } else {
-                    var imgMessages = "TEXT"
-                    Log.d(TAG, "pic_DATE!!!! $imgMessages")
-                    latestMessagesMap[p0.key!!] = chatMessage
-                    refreshRecyclerViewMessages(imgMessages)
-
-                }
-
-
+                latestMessagesMap[p0.key!!] = chatMessage
+                refreshRecyclerViewMessages()
             }
 
 
             override fun onChildChanged(p0: DataSnapshot, p1: String?) {
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
-                val substChatMessage = chatMessage.text.substringBefore('.')
-                val test1 = chatMessage.text
-                val time1 = chatMessage.timestamp * 1000
-//                formatedTime(time1)
-                val sfd = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
-                val sfd1 = sfd.format(Date(time1)).toString()
-                Log.d(TAG, "latests_mess $test1")
-                Log.d(TAG, "latest_DATE!!!! $sfd1")
-                if (substChatMessage == "https://firebasestorage") {
-                    var imgMessages = "picTures"
-                    Log.d(TAG, "pic_DATE!!!! $imgMessages")
-                    latestMessagesMap[p0.key!!] = chatMessage
-                    refreshRecyclerViewMessages(imgMessages)
-                } else {
-                    var imgMessages = "TEXT"
-                    Log.d(TAG, "pic_DATE!!!! $imgMessages")
-                    latestMessagesMap[p0.key!!] = chatMessage
-                    refreshRecyclerViewMessages(imgMessages)
-                }
-
+                latestMessagesMap[p0.key!!] = chatMessage
+                refreshRecyclerViewMessages()
             }
 
             override fun onChildMoved(p0: DataSnapshot, p1: String?) {

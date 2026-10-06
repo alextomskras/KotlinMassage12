@@ -7,7 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
-import com.example.fess.kotlinmassage1.service.MyFirebaseMessagingService
+import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.iid.FirebaseInstanceId
 import kotlinx.android.synthetic.main.activity_login.*
@@ -32,35 +32,16 @@ class LoginActivity : AppCompatActivity() {
 
     }
 
-    private fun refreshTokens(): String? {
-        Log.d("PRIVET", "Tken")
-        val tken = FirebaseInstanceId.getInstance().instanceId
-
-                .addOnSuccessListener(this@LoginActivity) { instanceIdResult ->
-                    val mToken = instanceIdResult.token
-
-                    Log.d("printing  fcm token:", "$mToken")
+    private fun warmUpToken() {
+        // Просто «греем» InstanceId, чтобы FCM выдал токен.
+        // Запись в /user-tokens/{uid}/{deviceId} сделаем после успешного логина (TokenStore).
+        FirebaseInstanceId.getInstance().instanceId
+                .addOnSuccessListener { instanceIdResult ->
+                    Log.d("LoginActivity", "fcm token: ${instanceIdResult.token}")
                 }
                 .addOnFailureListener {
-                    Toast.makeText(this, "BROKEN TOKEN", Toast.LENGTH_LONG).show()
-                    return@addOnFailureListener
-
+                    Log.w("LoginActivity", "Не удалось получить FCM token: ${it.message}")
                 }
-        Log.d("PRIVET", "$tken")
-
-
-
-        val newToken = FirebaseInstanceId.getInstance().token
-//        val newToken22 = FirebaseInstanceId.getInstance().instanceId.result.toString()
-        Log.d("newTokenLogin", newToken)
-//        Log.d("Token222", newToken22)
-        Toast.makeText(this, "Please fill out $newToken", Toast.LENGTH_LONG).show()
-
-
-        if (newToken != null) {
-            MyFirebaseMessagingService().saveTokenToFirebaseDatabase(newToken)
-        }
-        return newToken
     }
 
 
@@ -68,24 +49,21 @@ class LoginActivity : AppCompatActivity() {
         val email = email_edittext_login.text.toString()
         val password = password_edittext_login.text.toString()
 
-//        MyFirebaseMessagingService().onNewToken
-
-        refreshTokens()
+        warmUpToken()
 
         if (email.isEmpty() || password.isEmpty()) {
             Toast.makeText(this, "Please fill out email/pw.", Toast.LENGTH_SHORT).show()
             return
         }
 
-
-//        FirebaseInstanceId.getInstance().token
-
-
         FirebaseAuth.getInstance().signInWithEmailAndPassword(email, password)
                 .addOnCompleteListener {
                     if (!it.isSuccessful) return@addOnCompleteListener
 
                     Log.d("Login", "Successfully logged in: ${it.result!!.user.uid}")
+
+                    // Юзер залогинен — прописываем его токен в БД по схеме user-tokens/{uid}/{deviceId}
+                    TokenStore.saveCurrentToken(this)
 
                     val intent = Intent(this, LatestMessagesActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)

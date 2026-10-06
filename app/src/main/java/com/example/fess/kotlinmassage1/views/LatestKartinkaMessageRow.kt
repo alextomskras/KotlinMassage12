@@ -6,6 +6,7 @@ import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
 import com.example.fess.kotlinmassage1.models.ChatMessage
 import com.example.fess.kotlinmassage1.models.User
+import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -26,23 +27,29 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
 
     override fun bind(viewHolder: ViewHolder, position: Int) {
         val time1 = chatMessage.timestamp * 1000
-//                formatedTime(time1)
         val sfd = java.text.SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
-        val sfd1 = sfd.format(Date(time1)).toString()
-        Log.d(TAG, "KARTINKA_latest_DATE!!!! $sfd1")
-        val substChatMessage = chatMessage.text.substringBefore('.')
-        if (substChatMessage == "https://firebasestorage") {
-            viewHolder.itemView.textDate_message_time2.text = sfd1
-            val targetImageView = viewHolder.itemView.kartinka_imageview_latest_message
-            Picasso.get().load(chatMessage.text).into(targetImageView)
-            Log.d(TAG, "Kartinka_Message_ $chatMessage")
-        } else {
-            viewHolder.itemView.textDate_message_time2.text = sfd1
-            viewHolder.itemView.text_kartinka_textview_latest_message3.text = chatMessage.text
-            Log.d(TAG, "Kartinka_TEXT_Message_ $chatMessage")
-        }
-        //      viewHolder.itemView.kartinka_imageview_latest_message = chatMessage.text
+        val sfd1 = sfd.format(Date(time1))
 
+        val isImage = ImageUtils.isImagePayload(chatMessage.text) ||
+                // обратная совместимость со старыми URL из Firebase Storage
+                chatMessage.text.startsWith("https://firebasestorage")
+
+        viewHolder.itemView.textDate_message_time2.text = sfd1
+
+        if (isImage) {
+            val targetImageView = viewHolder.itemView.kartinka_imageview_latest_message
+            if (ImageUtils.isImagePayload(chatMessage.text)) {
+                val bmp = ImageUtils.base64ToBitmap(chatMessage.text)
+                if (bmp != null) targetImageView.setImageBitmap(bmp)
+            } else {
+                Picasso.get().load(chatMessage.text).into(targetImageView)
+            }
+            // в списке диалогов картинку текстом не показываем
+            viewHolder.itemView.text_kartinka_textview_latest_message3.text = "📷 Картинка"
+        } else {
+            // превью текста режем: base64 сюда не попадает, но обычные сообщения бывают длинными
+            viewHolder.itemView.text_kartinka_textview_latest_message3.text = chatMessage.text.take(80)
+        }
 
         val chatPartnerId: String
         if (chatMessage.fromId == FirebaseAuth.getInstance().uid) {
