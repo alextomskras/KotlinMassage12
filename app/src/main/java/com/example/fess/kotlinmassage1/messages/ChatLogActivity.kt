@@ -178,10 +178,11 @@ class ChatLogActivity : AppCompatActivity() {
         val db = FirebaseDatabase.getInstance().reference
         val messageRef = db.child(DbPaths.conversation(fromId, toId)).push()
         val mirrorKey = db.child(DbPaths.conversation(toId, fromId)).push().key ?: return
-        val outboxKey = db.child(DbPaths.OUTBOX).push().key ?: return
 
         val nowSec = System.currentTimeMillis() / 1000
         val chatMessage = ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType)
+        // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
+        val outboxKey = chatMessage.id
 
         // preview для пуша: base64 туда НЕ кладём (лимит payload 4 КБ)
         val preview = if (msgType == ChatMessage.TYPE_IMAGE) "📷 Картинка" else text.take(120)
