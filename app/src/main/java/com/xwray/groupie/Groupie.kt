@@ -16,6 +16,12 @@ open class ViewHolder(val itemView: android.view.View) : RecyclerView.ViewHolder
     val context: Context get() = itemView.context
 
     /**
+     * Groupie передаёт позицию в bind(); у нашего ViewHolder она нужна для защиты
+     * асинхронных колбэков (профиль/картинка) от переиспользования ячейки.
+     */
+    var boundPosition: Int = RecyclerView.NO_POSITION
+
+    /**
      * Замена Kotlin Synthetics (kotlinx.android.synthetic, удалён из Kotlin 1.4+):
      * itemView.some_id -> itemView.findViewById(R.id.some_id).
      */
@@ -47,6 +53,38 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
         notifyItemInserted(items.size - 1)
     }
 
+    /**
+     * Дифф-обновление списка. Точечные уведомления (inserted/removed) выпускаются только
+     * когда изменены ИСКЛЮЧИТЕЛЬНО хвостовые позиции — тогда старые индексы валидны для
+     * notifyItemRange*. Любые другие варианты (добавление/замена в середине, перестановка)
+     * безопасно уходят в notifyDataSetChanged(). Это чинит O(n^2) пересборку всего списка
+     * на каждое новое сообщение в LatestMessagesActivity.
+     */
+    fun updateWithDiff(newItems: List<Item<*>>) {
+        val old = ArrayList<Item<*>>(items)
+        items.clear()
+        items.addAll(newItems)
+
+        // длина изменилась только за счёт хвоста, и префикс совпадает по id -> точечное уведомление
+        val minLen = Math.min(old.size, newItems.size)
+        var common = 0
+        while (common < minLen && old[common].id == newItems[common].id) common++
+
+        val tailOnlyChange =
+            (newItems.size > old.size && common == old.size) ||   // добавлены элементы в конец
+            (old.size > newItems.size && common == newItems.size) // удалён хвост
+        if (tailOnlyChange) {
+            if (newItems.size > old.size) {
+                notifyItemRangeInserted(old.size, newItems.size - old.size)
+            } else {
+                notifyItemRangeRemoved(newItems.size, old.size - newItems.size)
+            }
+            return
+        }
+        if (old.size == newItems.size && common == old.size) return // идентично, ничего не меняем
+        notifyDataSetChanged()
+    }
+
     fun update(newItems: List<Item<*>>) {
         items.clear()
         items.addAll(newItems)
@@ -69,6 +107,7 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.boundPosition = position
         @Suppress("UNCHECKED_CAST")
         (items[position] as Item<ViewHolder>).bind(holder, position)
         holder.itemView.setOnClickListener {

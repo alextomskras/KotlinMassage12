@@ -1,59 +1,101 @@
 package com.example.fess.kotlinmassage1.views
 
-
-
-
-
-import android.util.Log
+import android.widget.ImageView
+import android.widget.TextView
 import com.example.fess.kotlinmassage1.R
-
-import com.example.fess.kotlinmassage1.messages.ChatLogActivity
 import com.example.fess.kotlinmassage1.models.ChatMessage
 import com.example.fess.kotlinmassage1.models.User
-import com.example.fess.kotlinmassage1.views.LatestMessageRow.Companion.TAG
+import com.example.fess.kotlinmassage1.util.ImageLoader
+import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
 import com.squareup.picasso.Picasso
 import com.xwray.groupie.Item
 import com.xwray.groupie.ViewHolder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>() {
-    companion object {
-        val TAG = "ChatItems"
-    }
+/** Общий контракт строк диалогов: по клику активити нужен собеседник. */
+interface DialogItem {
+    val chatPartnerUser: User?
+}
 
-    var chatPartnerUser: User? = null
+/**
+ * Строка списка диалогов (обычное текстовое сообщение).
+ * Профиль собеседника подтягивается через ImageLoader.fetchUser (колбэк в main),
+ * аватар — Picasso c превью-ресайзом.
+ */
+class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), DialogItem {
+
+    /** Имя собеседника доступно по клику (см. LatestMessagesActivity). */
+    override var chatPartnerUser: User? = null
+        private set
 
     override fun bind(viewHolder: ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("text_textview_latest_message")).text = chatMessage.text
+        
+        viewHolder.itemView.findViewById<TextView>(R.id.text_textview_latest_message).text =
+            chatMessage.text.take(120)
 
-        val chatPartnerId: String
-        if (chatMessage.fromId == FirebaseAuth.getInstance().uid) {
-            chatPartnerId = chatMessage.toId
+        val partnerId = chatMessage.partnerId(FirebaseAuth.getInstance().uid)
+        ImageLoader.fetchUser(partnerId) { user ->
+            if (user == null) return@fetchUser
+            chatPartnerUser = user
+            // ViewHolder мог быть переиспользован за время запроса — проверяем привязку
+            if (viewHolder.boundPosition != position) return@fetchUser
+            viewHolder.itemView.findViewById<TextView>(R.id.username_textview_latest_message).text = user.username
+            ImageLoader.loadAvatarInto(
+                user.profileImageUrl,
+                viewHolder.itemView.findViewById(R.id.imageview_latest_message)
+            )
+        }
+    }
+
+    override fun getLayout(): Int = R.layout.latest_message_row
+}
+
+/**
+ * Строка списка диалогов с картинкой. Декод base64 — в фоновом пуле (ImageLoader),
+ * раньше выполнялся синхронно в bind() и фризил список на каждом бинде.
+ */
+class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(), DialogItem {
+
+    override var chatPartnerUser: User? = null
+        private set
+
+    override fun bind(viewHolder: ViewHolder, position: Int) {
+        
+        val time = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault())
+            .format(Date(chatMessage.timestamp * 1000))
+        viewHolder.itemView.findViewById<TextView>(R.id.textDate_message_time2).text = time
+
+        val isImage = chatMessage.type == ChatMessage.TYPE_IMAGE
+        val previewText = viewHolder.itemView.findViewById<TextView>(R.id.text_kartinka_textview_latest_message3)
+        val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_imageview_latest_message)
+
+        if (isImage) {
+            previewText.text = "📷 Картинка"
+            if (ImageUtils.isImagePayload(chatMessage.text)) {
+                ImageLoader.loadBase64ToView(chatMessage.text, image)
+            } else {
+                // обратная совместимость со старыми URL из Firebase Storage
+                Picasso.get().load(chatMessage.text).into(image)
+            }
         } else {
-            chatPartnerId = chatMessage.fromId
+            previewText.text = chatMessage.text.take(80)
         }
 
-        val ref = FirebaseDatabase.getInstance().getReference("/users/$chatPartnerId")
-        ref.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(p0: DataSnapshot) {
-                chatPartnerUser = p0.getValue(User::class.java)
-                viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("username_textview_latest_message")).text = chatPartnerUser?.username
-
-                val targetImageView = viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.xwray.groupie.ViewIdResolver.idOf("imageview_latest_message"))
-                Picasso.get().load(chatPartnerUser?.profileImageUrl).into(targetImageView)
-            }
-
-            override fun onCancelled(p0: DatabaseError) {
-
-            }
-        })
+        val partnerId = chatMessage.partnerId(FirebaseAuth.getInstance().uid)
+        ImageLoader.fetchUser(partnerId) { user ->
+            if (user == null) return@fetchUser
+            chatPartnerUser = user
+            if (viewHolder.boundPosition != position) return@fetchUser
+            viewHolder.itemView.findViewById<TextView>(R.id.username_kartinka_textview_latest_message).text = user.username
+            ImageLoader.loadAvatarInto(
+                user.profileImageUrl,
+                viewHolder.itemView.findViewById(R.id.imageview_latest_message1)
+            )
+        }
     }
 
-    override fun getLayout(): Int {
-        return R.layout.latest_message_row
-    }
+    override fun getLayout(): Int = R.layout.latest_image_message_row
 }
