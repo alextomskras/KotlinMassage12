@@ -32,18 +32,18 @@ class RegisterActivity : AppCompatActivity() {
 
 
 
-        register_button_register.setOnClickListener {
+        findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.register_button_register).setOnClickListener {
             performRegister()
         }
 
-        already_have_accaunt_text_view.setOnClickListener {
+        findViewById<android.widget.TextView>(com.example.fess.kotlinmassage1.R.id.already_have_accaunt_text_view).setOnClickListener {
             Log.d("RegisterActivity", "Try show log activity")
             //Lounch login activity somehow
             val intent = Intent(this, LoginActivity::class.java)
             startActivity(intent)
         }
 
-        select_photo_button_register.setOnClickListener {
+        findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.select_photo_button_register).setOnClickListener {
             Log.d("RegisterActivity", "Try select photo")
 
             val intent = Intent(Intent.ACTION_PICK)
@@ -66,9 +66,9 @@ class RegisterActivity : AppCompatActivity() {
 
             val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, selectedPhotoUri)
 
-            select_photoview_register.setImageBitmap(bitmap)
+            findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.example.fess.kotlinmassage1.R.id.select_photoview_register).setImageBitmap(bitmap)
 
-            select_photo_button_register.alpha = 0f
+            findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.select_photo_button_register).alpha = 0f
 
             //  val bitmapDrawable = BitmapDrawable(bitmap)
             // select_photo_button_register.setBackgroundDrawable(bitmapDrawable)
@@ -78,8 +78,8 @@ class RegisterActivity : AppCompatActivity() {
 
     private fun performRegister() {
 
-        val email = email_edittext_register.text.toString()
-        val password = password_edittext_register.text.toString()
+        val email = findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.email_edittext_register).text.toString()
+        val password = findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.password_edittext_register).text.toString()
 
         if (email.isEmpty() || password.isEmpty()) {
             Toast.makeText(this, "Please enter email/pw", Toast.LENGTH_SHORT).show()
@@ -94,7 +94,7 @@ class RegisterActivity : AppCompatActivity() {
                 .addOnCompleteListener {
                     if (!it.isSuccessful) return@addOnCompleteListener
                     //Else if successful
-                    Log.d("Main", "Succefful create user: ${it.result!!.user.uid}")
+                    Log.d("Main", "Succefful create user: ${it.result!!.user!!.uid}")
 
                     val avatarB64 = if (selectedPhotoUri != null)
                         ImageUtils.compressToBase64(this, selectedPhotoUri!!) ?: "" else ""
@@ -113,7 +113,7 @@ class RegisterActivity : AppCompatActivity() {
         val uid = FirebaseAuth.getInstance().uid ?: ""
         val ref = FirebaseDatabase.getInstance().getReference("/users/$uid")
 
-        val user = User(uid, username_edittext_register.text.toString(), profileImageUrl)
+        val user = User(uid, findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.username_edittext_register).text.toString(), profileImageUrl)
 
         ref.setValue(user)
                 .addOnSuccessListener {

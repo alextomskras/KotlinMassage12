@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">KotlinMassage1</string>
+    <!-- Должно совпадать с MyFirebaseMessagingService.CHANNEL_ID -->
+    <string name="notification_channel_id" translatable="false">messenger_messages_v1</string>
 </resources>

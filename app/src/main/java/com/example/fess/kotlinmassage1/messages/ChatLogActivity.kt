@@ -45,7 +45,7 @@ class ChatLogActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat_log)
 
-        recyclerview_chat_log.adapter = adapter
+        findViewById<androidx.recyclerview.widget.RecyclerView>(com.example.fess.kotlinmassage1.R.id.recyclerview_chat_log).adapter = adapter
 
         toUser = intent.getParcelableExtra<User>(NewMessageActivity.USER_KEY)
 
@@ -59,12 +59,12 @@ class ChatLogActivity : AppCompatActivity() {
 
 
 
-        send_button_chat_log.setOnClickListener {
+        findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.send_button_chat_log).setOnClickListener {
             Log.d(TAG, "Attempt to send message....")
             performSendMessage()
         }
 
-        image_send_button_chat_log.setOnClickListener {
+        findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.image_send_button_chat_log).setOnClickListener {
             Log.d(TAG, "Attempt to select images....")
             Toast.makeText(this, "Please select images", Toast.LENGTH_SHORT).show()
 
@@ -87,9 +87,9 @@ class ChatLogActivity : AppCompatActivity() {
 
             val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, selectedImageUri)
 
-            select_photoview_image_send.setImageBitmap(bitmap)
+            findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.example.fess.kotlinmassage1.R.id.select_photoview_image_send).setImageBitmap(bitmap)
 
-            image_send_button_chat_log.alpha = 0f
+            findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.image_send_button_chat_log).alpha = 0f
 
             // Картинку НЕ грузим в Firebase Storage — жмём и кладём base64 прямо в БД.
             sendSelectedImage()
@@ -115,8 +115,8 @@ class ChatLogActivity : AppCompatActivity() {
 
     private fun resetImagePickerUi() {
         runOnUiThread {
-            select_photoview_image_send.setImageBitmap(null)
-            image_send_button_chat_log.alpha = 1f
+            findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.example.fess.kotlinmassage1.R.id.select_photoview_image_send).setImageBitmap(null)
+            findViewById<android.widget.Button>(com.example.fess.kotlinmassage1.R.id.image_send_button_chat_log).alpha = 1f
             selectedImageUri = null
         }
     }
@@ -158,7 +158,7 @@ class ChatLogActivity : AppCompatActivity() {
                     adapter.add(buildChatItem(chatMessage, isIncoming))
                 }
 
-                recyclerview_chat_log.scrollToPosition(adapter.itemCount - 1)
+                findViewById<androidx.recyclerview.widget.RecyclerView>(com.example.fess.kotlinmassage1.R.id.recyclerview_chat_log).scrollToPosition(adapter.itemCount - 1)
 
             }
 
@@ -189,7 +189,7 @@ class ChatLogActivity : AppCompatActivity() {
      */
     private fun writeMessage(text: String) {
         val fromId = FirebaseAuth.getInstance().uid ?: return
-        val user = intent.getParcelableExtra<User>(NewMessageActivity.USER_KEY)
+        val user = intent.getParcelableExtra<User>(NewMessageActivity.USER_KEY) ?: return
         val toId = user.uid
 
         val reference = FirebaseDatabase.getInstance().getReference("/user-messages/$fromId/$toId").push()
@@ -199,8 +199,8 @@ class ChatLogActivity : AppCompatActivity() {
         reference.setValue(chatMessage)
                 .addOnSuccessListener {
                     Log.d(TAG, "Saved our chat message: ${reference.key}")
-                    edittext_chat_log.text.clear()
-                    recyclerview_chat_log.scrollToPosition(adapter.itemCount - 1)
+                    findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.edittext_chat_log).text.clear()
+                    findViewById<androidx.recyclerview.widget.RecyclerView>(com.example.fess.kotlinmassage1.R.id.recyclerview_chat_log).scrollToPosition(adapter.itemCount - 1)
                 }
         toReference.setValue(chatMessage)
 
@@ -227,7 +227,7 @@ class ChatLogActivity : AppCompatActivity() {
 
 
     fun performSendMessage() {
-        val text = edittext_chat_log.text.toString()
+        val text = findViewById<android.widget.EditText>(com.example.fess.kotlinmassage1.R.id.edittext_chat_log).text.toString()
         if (text.isEmpty()) return
         writeMessage(text)
     }

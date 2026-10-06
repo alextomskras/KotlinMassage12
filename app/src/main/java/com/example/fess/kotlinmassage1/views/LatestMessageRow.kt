@@ -28,7 +28,7 @@ class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>() {
     var chatPartnerUser: User? = null
 
     override fun bind(viewHolder: ViewHolder, position: Int) {
-        viewHolder.itemView.text_textview_latest_message.text = chatMessage.text
+        viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("text_textview_latest_message")).text = chatMessage.text
 
         val chatPartnerId: String
         if (chatMessage.fromId == FirebaseAuth.getInstance().uid) {
@@ -41,9 +41,9 @@ class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>() {
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(p0: DataSnapshot) {
                 chatPartnerUser = p0.getValue(User::class.java)
-                viewHolder.itemView.username_textview_latest_message.text = chatPartnerUser?.username
+                viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("username_textview_latest_message")).text = chatPartnerUser?.username
 
-                val targetImageView = viewHolder.itemView.imageview_latest_message
+                val targetImageView = viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.xwray.groupie.ViewIdResolver.idOf("imageview_latest_message"))
                 Picasso.get().load(chatPartnerUser?.profileImageUrl).into(targetImageView)
             }
 

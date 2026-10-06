@@ -37,10 +37,10 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
                 // обратная совместимость со старыми URL из Firebase Storage
                 chatMessage.text.startsWith("https://firebasestorage")
 
-        viewHolder.itemView.textDate_message_time2.text = sfd1
+        viewHolder.itemView.findViewById<android.widget.TextView>(com.example.fess.kotlinmassage1.R.id.textDate_message_time2).text = sfd1
 
         if (isImage) {
-            val targetImageView = viewHolder.itemView.kartinka_imageview_latest_message
+            val targetImageView = viewHolder.itemView.findViewById<android.widget.ImageView>(com.xwray.groupie.ViewIdResolver.idOf("kartinka_imageview_latest_message"))
             if (ImageUtils.isImagePayload(chatMessage.text)) {
                 val bmp = ImageUtils.base64ToBitmap(chatMessage.text)
                 if (bmp != null) targetImageView.setImageBitmap(bmp)
@@ -48,10 +48,10 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
                 Picasso.get().load(chatMessage.text).into(targetImageView)
             }
             // в списке диалогов картинку текстом не показываем
-            viewHolder.itemView.text_kartinka_textview_latest_message3.text = "📷 Картинка"
+            viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("text_kartinka_textview_latest_message3")).text = "📷 Картинка"
         } else {
             // превью текста режем: base64 сюда не попадает, но обычные сообщения бывают длинными
-            viewHolder.itemView.text_kartinka_textview_latest_message3.text = chatMessage.text.take(80)
+            viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("text_kartinka_textview_latest_message3")).text = chatMessage.text.take(80)
         }
 
         val chatPartnerId: String
@@ -65,9 +65,9 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>(
         ref.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(p0: DataSnapshot) {
                 chatPartnerUser = p0.getValue(User::class.java)
-                viewHolder.itemView.username_kartinka_textview_latest_message.text = chatPartnerUser?.username
+                viewHolder.itemView.findViewById<android.widget.TextView>(com.xwray.groupie.ViewIdResolver.idOf("username_kartinka_textview_latest_message")).text = chatPartnerUser?.username
 
-                val targetImageView = viewHolder.itemView.imageview_latest_message1
+                val targetImageView = viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(com.xwray.groupie.ViewIdResolver.idOf("imageview_latest_message1"))
                 Picasso.get().load(chatPartnerUser?.profileImageUrl).into(targetImageView)
             }
 

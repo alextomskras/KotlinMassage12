@@ -14,6 +14,13 @@ import androidx.recyclerview.widget.RecyclerView
  */
 open class ViewHolder(val itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
     val context: Context get() = itemView.context
+
+    /**
+     * Замена Kotlin Synthetics (kotlinx.android.synthetic, удалён из Kotlin 1.4+):
+     * itemView.some_id -> itemView.findViewById(R.id.some_id).
+     */
+    operator fun get(name: String): android.view.View? =
+        itemView.findViewById(ViewIdResolver.idOf(name))
 }
 
 abstract class Item<VH : ViewHolder> {
@@ -23,12 +30,17 @@ abstract class Item<VH : ViewHolder> {
         @Suppress("UNCHECKED_CAST")
         return ViewHolder(view) as VH
     }
-    open fun id: Long = hashCode().toLong()
+    open val id: Long get() = hashCode().toLong()
 }
 
 class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
 
     private val items = mutableListOf<Item<*>>()
+
+    private var onItemClickListener: ((Item<*>, android.view.View) -> Unit)? = null
+    fun setOnItemClickListener(listener: (Item<*>, android.view.View) -> Unit) {
+        onItemClickListener = listener
+    }
 
     fun add(item: Item<*>) {
         items.add(item)
@@ -59,6 +71,12 @@ class GroupAdapter<VH : ViewHolder> : RecyclerView.Adapter<ViewHolder>() {
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         @Suppress("UNCHECKED_CAST")
         (items[position] as Item<ViewHolder>).bind(holder, position)
+        holder.itemView.setOnClickListener {
+            val idx = holder.bindingAdapterPosition
+            if (idx != androidx.recyclerview.widget.RecyclerView.NO_POSITION) {
+                onItemClickListener?.invoke(items[idx], holder.itemView)
+            }
+        }
     }
 
     // viewType == позиция при стабильных ID запрещаем; используем позицию как viewType
