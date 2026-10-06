@@ -41,12 +41,13 @@ object TokenStore {
         return id
     }
 
-    /** Сохраняет текущий FCM-токен текущего залогиненного юзера. */
+    /** Сохраняет текущий FCM-токен текущего залогиненного юзера (modern API вместо IID). */
     fun saveCurrentToken(context: Context) {
         val uid = FirebaseAuth.getInstance().uid ?: return
-        val token = com.google.firebase.iid.FirebaseInstanceId.getInstance().token
-        if (token.isNullOrEmpty()) return
-        write(uid, deviceId(context), token)
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                if (!token.isNullOrEmpty()) write(uid, deviceId(context), token)
+            }
     }
 
     fun write(uid: String, deviceId: String, token: String) {

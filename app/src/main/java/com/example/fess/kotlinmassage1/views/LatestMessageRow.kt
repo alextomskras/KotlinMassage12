@@ -1,5 +1,9 @@
 package com.example.fess.kotlinmassage1.views
 
+
+
+
+
 import android.util.Log
 import com.example.fess.kotlinmassage1.R
 
@@ -15,8 +19,6 @@ import com.google.firebase.database.ValueEventListener
 import com.squareup.picasso.Picasso
 import com.xwray.groupie.Item
 import com.xwray.groupie.ViewHolder
-import kotlinx.android.synthetic.main.latest_image_message_row.view.*
-import kotlinx.android.synthetic.main.latest_message_row.view.*
 
 class LatestMessageRow(val chatMessage: ChatMessage) : Item<ViewHolder>() {
     companion object {

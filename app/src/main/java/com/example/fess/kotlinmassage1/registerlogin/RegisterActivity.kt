@@ -1,9 +1,13 @@
 package com.example.fess.kotlinmassage1.registerlogin
 
+
+
+
+
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
@@ -14,8 +18,7 @@ import com.example.fess.kotlinmassage1.models.User
 import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import kotlinx.android.synthetic.main.activity_register.*
+import com.example.fess.kotlinmassage1.util.ImageUtils
 import java.util.*
 
 
@@ -23,6 +26,7 @@ class RegisterActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.fess.kotlinmassage1.util.NotificationHelper.ensureChannel(this)
         setContentView(R.layout.activity_register)
 
 
@@ -92,7 +96,9 @@ class RegisterActivity : AppCompatActivity() {
                     //Else if successful
                     Log.d("Main", "Succefful create user: ${it.result!!.user.uid}")
 
-                    uploadImageToFirebaseStorage()
+                    val avatarB64 = if (selectedPhotoUri != null)
+                        ImageUtils.compressToBase64(this, selectedPhotoUri!!) ?: "" else ""
+                    saveUserToFirebaseDatabase(avatarB64)
                 }
                 .addOnFailureListener {
                     Log.d("Main", "Failed create user: ${it.message}")
@@ -100,33 +106,6 @@ class RegisterActivity : AppCompatActivity() {
                 }
     }
 
-    private fun uploadImageToFirebaseStorage() {
-        if (selectedPhotoUri == null) {
-            saveUserToFirebaseDatabase("")
-            return
-        }
-
-        val filename = UUID.randomUUID().toString()
-        val ref = FirebaseStorage.getInstance().getReference("/images/$filename")
-
-        ref.putFile(selectedPhotoUri!!)
-                .addOnSuccessListener {
-                    Log.d("Register", "Successfully upload image: ${it.metadata?.path}")
-
-                    ref.downloadUrl.addOnSuccessListener {
-                        Log.d("Register", "File location: $it")
-
-                        saveUserToFirebaseDatabase(it.toString())
-
-                    }
-                }
-                .addOnFailureListener {
-                    // do on fail
-                    Log.d("Register", "File location: ${it.message}")
-                    saveUserToFirebaseDatabase("")
-                }
-
-    }
 
     private fun saveUserToFirebaseDatabase(profileImageUrl: String) {
 

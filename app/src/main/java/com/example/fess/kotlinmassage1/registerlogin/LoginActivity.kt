@@ -1,22 +1,26 @@
 package com.example.fess.kotlinmassage1.registerlogin
 
+
+
+
+
 import android.content.Intent
 import android.os.Bundle
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.util.Log
 import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
 import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.iid.FirebaseInstanceId
-import kotlinx.android.synthetic.main.activity_login.*
+import com.google.firebase.messaging.FirebaseMessaging
 
 
 class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.fess.kotlinmassage1.util.NotificationHelper.ensureChannel(this)
 
 
         setContentView(R.layout.activity_login)
@@ -35,9 +39,9 @@ class LoginActivity : AppCompatActivity() {
     private fun warmUpToken() {
         // Просто «греем» InstanceId, чтобы FCM выдал токен.
         // Запись в /user-tokens/{uid}/{deviceId} сделаем после успешного логина (TokenStore).
-        FirebaseInstanceId.getInstance().instanceId
-                .addOnSuccessListener { instanceIdResult ->
-                    Log.d("LoginActivity", "fcm token: ${instanceIdResult.token}")
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    Log.d("LoginActivity", "fcm token: $token")
                 }
                 .addOnFailureListener {
                     Log.w("LoginActivity", "Не удалось получить FCM token: ${it.message}")

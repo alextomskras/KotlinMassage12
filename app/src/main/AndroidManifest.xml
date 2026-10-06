@@ -39,10 +39,7 @@
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_fire_emoji" />
 
-        <service android:name=".service.MyFirebaseInstanceIDService">
-            <intent-filter>
-                <action android:name="com.google.firebase.INSTANCE_ID_EVENT" />
-            </intent-filter>
+        <!-- REMOVED: MyFirebaseInstanceIDService (class deleted, INSTANCE_ID API deprecated) -->
         </service>
         <service android:name=".service.MyFirebaseMessagingService">
             <intent-filter>

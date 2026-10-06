@@ -1,9 +1,13 @@
 package com.example.fess.kotlinmassage1.messages
 
+
+
+
+
 import android.content.Intent
-import android.support.v7.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.support.v7.widget.DividerItemDecoration
+import androidx.recyclerview.widget.DividerItemDecoration
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -18,9 +22,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
 import com.xwray.groupie.GroupAdapter
 import com.xwray.groupie.ViewHolder
-import kotlinx.android.synthetic.main.activity_latest_messages.*
-//import kotlinx.android.synthetic.main.activity_latest_messages.*
-import java.util.*
+//import java.util.*
 
 class LatestMessagesActivity : AppCompatActivity() {
 

@@ -1,5 +1,9 @@
 package com.example.fess.kotlinmassage1.views
 
+
+
+
+
 import android.util.Log
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.ChatLogActivity.Companion.TAG
@@ -8,10 +12,6 @@ import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.squareup.picasso.Picasso
 import com.xwray.groupie.Item
 import com.xwray.groupie.ViewHolder
-import kotlinx.android.synthetic.main.chat_from_row.view.*
-import kotlinx.android.synthetic.main.chat_to_row.view.*
-import kotlinx.android.synthetic.main.kartinka_from_row.view.*
-import kotlinx.android.synthetic.main.kartinka_to_row.view.*
 import java.util.*
 
 
