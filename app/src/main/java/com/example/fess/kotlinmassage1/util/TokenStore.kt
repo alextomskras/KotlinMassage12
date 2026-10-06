@@ -46,7 +46,11 @@ object TokenStore {
         val uid = FirebaseAuth.getInstance().uid ?: return
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { token ->
+                android.util.Log.d("TokenStore", "uid=$uid device=${deviceId(context)} token=${token?.take(30)}...")
                 if (!token.isNullOrEmpty()) write(uid, deviceId(context), token)
+            }
+            .addOnFailureListener { e ->
+                android.util.Log.e("TokenStore", "FCM token fetch failed (Google Play services?)", e)
             }
     }
 
