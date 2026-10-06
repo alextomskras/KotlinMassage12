@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.ChatLogActivity.Companion.TAG
 import com.example.fess.kotlinmassage1.models.User
+import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.squareup.picasso.Picasso
 import com.xwray.groupie.Item
 import com.xwray.groupie.ViewHolder
@@ -51,15 +52,18 @@ class ChatToItem(val text: String, val user: User, val sfd1: String) : Item<View
 class KartinkaFromItem(val text: String, val user: User, val sfd1: String) : Item<ViewHolder>() {
 
     override fun bind(viewHolder: ViewHolder, position: Int) {
-        Log.d(TAG, "_Message $text")
-//        setTimeMessage (viewHolder)
-        setTimeMessage()
-        //  viewHolder.itemView.textView_message_time.text = setTimeMessage()
+        Log.d(TAG, "_Message from (len=${text.length})")
         viewHolder.itemView.textView_message_time.text = sfd1
-        var uri1 = text
 
-        var targetImageView1 = viewHolder.itemView.kartinka_chat_from_row2
-        Picasso.get().load(uri1).into(targetImageView1)
+        val targetImageView1 = viewHolder.itemView.kartinka_chat_from_row2
+        if (ImageUtils.isImagePayload(text)) {
+            // base64 из БД -> Bitmap напрямую, без Picasso/Storage
+            val bmp = ImageUtils.base64ToBitmap(text)
+            if (bmp != null) targetImageView1.setImageBitmap(bmp)
+        } else {
+            // старые сообщения — URL из Firebase Storage
+            Picasso.get().load(text).into(targetImageView1)
+        }
 
         val uri = user.profileImageUrl
         val targetImageView = viewHolder.itemView.imageview_chat_from_row2
@@ -73,14 +77,16 @@ class KartinkaFromItem(val text: String, val user: User, val sfd1: String) : Ite
 
 class KartinkaToItem(val text: String, val user: User, val sfd1: String) : Item<ViewHolder>() {
     override fun bind(viewHolder: ViewHolder, position: Int) {
-        Log.d(TAG, "_Message_to_ $text")
-//        setTimeMessage_to (viewHolder)
-        setTimeMessage()
+        Log.d(TAG, "_Message_to_ (len=${text.length})")
         viewHolder.itemView.textView_to_message_time.text = sfd1
-        val uri1 = text
+
         val targetImageView1 = viewHolder.itemView.kartinka_chat_to_row2
-        Picasso.get().load(uri1).into(targetImageView1)
-        //       viewHolder.itemView.kartinka_chat_to_row2.imageview_chat_to_row = kartinka
+        if (ImageUtils.isImagePayload(text)) {
+            val bmp = ImageUtils.base64ToBitmap(text)
+            if (bmp != null) targetImageView1.setImageBitmap(bmp)
+        } else {
+            Picasso.get().load(text).into(targetImageView1)
+        }
 
         // load our user image into the star
         val uri = user.profileImageUrl

@@ -1,107 +1,119 @@
 package com.example.fess.kotlinmassage1.service
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
+import android.os.Build
 import android.support.v4.app.NotificationCompat
 import android.util.Log
-import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
+import com.example.fess.kotlinmassage1.messages.ChatLogActivity
+import com.example.fess.kotlinmassage1.messages.NewMessageActivity
+import com.example.fess.kotlinmassage1.models.User
 import com.example.fess.kotlinmassage1.registerlogin.LoginActivity
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.iid.FirebaseInstanceId
+import com.example.fess.kotlinmassage1.util.TokenStore
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
+/**
+ * Приёмник FCM.
+ *
+ * ОЖИДАЕМЫЙ ФОРМАТ PUSH (генерирует бэкенд-релей, слушающий /outbox):
+ *   notification: { title: "<имя отправителя>", body: "<текст или '📷 Картинка'>" }
+ *   data: {
+ *     "fromId": "<uid отправителя>",
+ *     "toId":   "<uid получателя>",
+ *     "type":   "text" | "image",
+ *     "msgId":  "<ключ сообщения>"
+ *   }
+ *
+ * Push несёт ТОЛЬКО превью — сама картинка (base64) лежит в БД и подтягивается
+ * при открытии чата через ChildEventListener. Так payload держится < 4 КБ.
+ */
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
-    val TAG = "FCM_Service"
+    private val TAG = "FCM_Service"
+
+    override fun onNewToken(token: String?) {
+        super.onNewToken(token)
+        Log.d(TAG, "onNewToken received")
+        // Сохраняем по схеме /user-tokens/{uid}/{deviceId}.
+        // Если юзер не залогинен — токен пропишется при логине/регистрации (см. LoginActivity/RegisterActivity).
+        if (FirebaseAuth.getInstance().currentUser != null && token != null) {
+            TokenStore.saveCurrentToken(this)
+        }
+    }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage?) {
-        // TODO: Handle FCM messages here.
-        // If the application is in the foreground handle both data and notification messages here.
-        // Also if you intend on generating your own notifications as a result of a received FCM
-        // message, here is where that should be initiated.
-        Log.d(TAG, "From: " + remoteMessage!!.from)
-        Log.d(TAG, "Notification Message Body: " + remoteMessage.notification!!.body!!)
-        sendNotification(remoteMessage)
-//        val intent = Intent(this@MyFirebaseMessagingService, LoginActivity::class.java)
-//        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-//        intent.putExtra("message", remoteMessage.notification!!.body!!)
-//        startActivity(intent)
+        if (remoteMessage == null) return
+
+        val data = remoteMessage.data ?: emptyMap()
+        val fromId = data["fromId"]
+        val title = remoteMessage.notification?.title ?: data["title"] ?: "Новое сообщение"
+        val body = remoteMessage.notification?.body ?: data["body"] ?: ""
+
+        Log.d(TAG, "From: ${remoteMessage.from}, type=${data["type"]}")
+
+        sendNotification(title, body, fromId)
     }
 
-
-    override fun onNewToken(s: String?) {
-        super.onNewToken(s)
-        val deviceToken = s
-        Log.d("NEW_TOKEN", deviceToken)
-
-
-        val newRegistrationToken = FirebaseInstanceId.getInstance().getInstanceId().toString()
-        Log.d(TAG, "TOKEN_$newRegistrationToken")
-        Toast.makeText(this, "Failed create Token: ${newRegistrationToken}", Toast.LENGTH_SHORT).show()
-
-//        if (FirebaseAuth.getInstance().currentUser != null)
-//            addTokenToFirestore(newRegistrationToken)
-//            saveTokenToFirebaseDatabase (newRegistrationToken)
-    }
-
-    fun saveTokenToFirebaseDatabase(newRegistrationToken: String?) {
-
-        if (newRegistrationToken == null) {
-            throw NullPointerException("FCM token is null.")
-            //        val uid = FirebaseAuth.getInstance().uid ?: ""
+    private fun ensureChannel(manager: NotificationManager) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Сообщения",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Пуши новых сообщений мессенджера"
+                enableLights(true)
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(channel)
         }
-
-        val ref = FirebaseDatabase.getInstance().getReference("/Tokens/$newRegistrationToken")
-
-//        val user = User(uid, username_edittext_register.text.toString(), profileImageUrl)
-
-        ref.setValue(newRegistrationToken)
-                .addOnSuccessListener {
-                    Log.d("Register_TOKEN", "Finally save Token to firebasedatabase")
-
-//                    val intent = Intent(this, LatestMessagesActivity::class.java)
-//                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)
-//                    startActivity(intent)
-
-                }
-                .addOnFailureListener {
-                    Log.d("Register_TOKEN", "Failed set Token value to firebasedatabase ${newRegistrationToken}")
-                }
     }
 
+    private fun sendNotification(title: String, body: String, fromId: String?) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        ensureChannel(manager)
+
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, buildTargetIntent(fromId),
+            PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setAutoCancel(true)
+            .setSmallIcon(R.drawable.ic_fire_emoji)
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            .setContentIntent(pendingIntent)
+
+        manager.notify(System.currentTimeMillis().toInt(), builder.build())
+    }
+
+    /**
+     * Тап по пушу ведёт сразу в чат с отправителем (если знаем его uid),
+     * иначе — на экран логина.
+     */
+    private fun buildTargetIntent(fromId: String?): Intent {
+        if (fromId != null) {
+            val user = User(fromId, "", "")
+            return Intent(this, ChatLogActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(NewMessageActivity.USER_KEY, user)
+            }
+        }
+        return Intent(this, LoginActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+    }
 
     companion object {
-        fun addTokenToFirestore(newRegistrationToken: String?) {
-            if (newRegistrationToken == null) throw NullPointerException("FCM token is null.")
-
-//            FirestoreUtil.getFCMRegistrationTokens { tokens ->
-//                if (tokens.contains(newRegistrationToken))
-//                    return@getFCMRegistrationTokens
-//
-//                tokens.add(newRegistrationToken)
-//                FirestoreUtil.setFCMRegistrationTokens(tokens)
-//            }
-        }
-    }
-
-    private fun sendNotification(remoteMessage: RemoteMessage) {
-        val intent = Intent(this, LoginActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        val pendingIntent = PendingIntent.getActivity(this, 0 /* Request code */, intent,
-                PendingIntent.FLAG_ONE_SHOT)
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val notificationBuilder = NotificationCompat.Builder(this)
-                .setContentText(remoteMessage.notification!!.body)
-                .setAutoCancel(true)
-                .setSmallIcon(R.drawable.ic_fire_emoji)
-                .setSound(defaultSoundUri)
-                .setContentIntent(pendingIntent)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(0 /* ID of notification */, notificationBuilder.build())
+        const val CHANNEL_ID = "messenger_messages_v1"
     }
 }
