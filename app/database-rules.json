@@ -12,7 +12,9 @@
         ".read": "auth != null && auth.uid === $myUid",
         ".write": "auth != null && auth.uid === $myUid",
         "$otherUid": {
-          ".indexOn": ["timestamp"]
+          ".indexOn": [
+            "timestamp"
+          ]
         }
       }
     },
@@ -31,7 +33,7 @@
     },
     "outbox": {
       "$pushId": {
-        ".read": "auth != null && auth.token.admin === true",
+        ".read": "auth != null && (auth.token.admin === true || auth.uid === $pushId)",
         ".write": "auth != null"
       }
     }

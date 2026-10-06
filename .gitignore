@@ -1,9 +1,18 @@
+# Gradle
 .gradle/
 build/
-captures/
 local.properties
-*.iml
+
+# IDE
 .idea/
+*.iml
 .DS_Store
+captures/
+
+# Артефакты сборки
 *.apk
+*.aab
 *.zip
+
+# Логи
+*.log
