@@ -80,7 +80,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val pendingIntent = PendingIntent.getActivity(
             this, 0, buildTargetIntent(fromId),
-            PendingIntent.FLAG_UPDATE_CURRENT
+            // FLAG_IMMUTABLE обязателен на Android 12+ (API 31), иначе — краш при создании пуша
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
