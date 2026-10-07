@@ -139,7 +139,7 @@ class ChatLogActivity : AppCompatActivity() {
                 // сообщение с датой 01.01.1970. Такие узлы игнорируем.
                 if (!p0.hasChild("text") && !p0.hasChild("fromId")) return
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
-                if (chatMessage.text.isNullOrEmpty() && chatMessage.fromId.isEmpty()) return
+                if ((chatMessage.text.isNullOrEmpty() || chatMessage.text == "-1") && chatMessage.fromId.isEmpty()) return
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
                 adapter.append(buildChatItem(chatMessage, isIncoming))
                 scrollToBottom()
