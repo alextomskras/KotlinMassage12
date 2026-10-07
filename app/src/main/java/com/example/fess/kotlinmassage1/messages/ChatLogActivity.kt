@@ -119,7 +119,9 @@ class ChatLogActivity : AppCompatActivity() {
      * image -> Kartinka*, иначе Chat*. Декод base64 внутри items — через ImageLoader (фон).
      */
     private fun buildChatItem(chatMessage: ChatMessage, isIncoming: Boolean): com.example.fess.kotlinmassage1.views.ChatRowDelegate {
-        val timeStr = TIME_FORMAT.format(Date(chatMessage.timestamp * 1000))
+        // timestamp<=0 (старые/битые записи) -> текущее время вместо 01.01.1970
+        val ts = if (chatMessage.timestamp > 0) chatMessage.timestamp else System.currentTimeMillis() / 1000
+        val timeStr = TIME_FORMAT.format(Date(ts * 1000))
         val user = if (isIncoming) toUser!! else (LatestMessagesActivity.currentUser ?: toUser!!)
         return chatItemFor(chatMessage, user, isIncoming, timeStr)
     }
@@ -131,7 +133,13 @@ class ChatLogActivity : AppCompatActivity() {
 
         val listener = object : ChildEventListener {
             override fun onChildAdded(p0: DataSnapshot, p1: String?) {
+                // Защита от «пустых» узлов: бэкенд-релей (пишет по admin-правам)
+                // мог оставить в зеркале чата ноду без данных сообщения
+                // (например {"delivered": true}) -> клиент рисовал пустое
+                // сообщение с датой 01.01.1970. Такие узлы игнорируем.
+                if (!p0.hasChild("text") && !p0.hasChild("fromId")) return
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                if (chatMessage.text.isNullOrEmpty() && chatMessage.fromId.isEmpty()) return
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
                 adapter.append(buildChatItem(chatMessage, isIncoming))
                 scrollToBottom()
