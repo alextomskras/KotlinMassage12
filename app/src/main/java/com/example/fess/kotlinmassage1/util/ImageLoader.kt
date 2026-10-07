@@ -48,11 +48,19 @@ object ImageLoader {
         }
     }
 
-    /** Uri -> base64 в фоновом потоке; результат — в main. */
+    /** Uri -> base64 в фоновом потоке; результат — в main. null = не удалось или >10 МБ. */
     fun compressUri(context: Context, uri: Uri, callback: (String?) -> Unit) {
         executor.execute {
             val b64 = ImageUtils.compressToBase64(context.applicationContext, uri)
             main.post { callback(b64) }
+        }
+    }
+
+    /** Uri -> типизированный результат сжатия (Ok/TooLarge/Failed) в фоне; колбэк в main. */
+    fun compressUriDetailed(context: Context, uri: Uri, callback: (ImageUtils.CompressResult) -> Unit) {
+        executor.execute {
+            val result = ImageUtils.compressToResult(context.applicationContext, uri)
+            main.post { callback(result) }
         }
     }
 

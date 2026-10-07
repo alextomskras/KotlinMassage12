@@ -2,25 +2,26 @@
   "rules": {
     "users": {
       ".read": "auth != null",
+      ".indexOn": ["username"],
       "$uid": {
         ".write": "auth != null && auth.uid === $uid"
       }
     },
     "user-messages": {
-      ".read": false,
+      ".read": "auth != null",
       "$myUid": {
         ".read": "auth != null && auth.uid === $myUid",
-        ".write": "auth != null && (auth.uid === $myUid || root.child('users').child(auth.uid).exists())",
+        ".write": "auth != null",
         "$otherUid": {
           ".indexOn": ["timestamp"]
         }
       }
     },
     "latest-messages": {
-      ".read": false,
+      ".read": "auth != null",
       "$myUid": {
         ".read": "auth != null && auth.uid === $myUid",
-        ".write": "auth != null && (auth.uid === $myUid || root.child('users').child(auth.uid).exists())"
+        ".write": "auth != null"
       }
     },
     "user-tokens": {
@@ -30,10 +31,10 @@
       }
     },
     "outbox": {
-      ".read": false,
+      ".read": "auth != null",
       "$msgId": {
         ".read": "auth != null && (auth.token.admin === true || auth.uid === data.child('fromId').val())",
-        ".write": "auth != null && auth.uid === data.child('fromId').val()"
+        ".write": "auth != null"
       }
     }
   }

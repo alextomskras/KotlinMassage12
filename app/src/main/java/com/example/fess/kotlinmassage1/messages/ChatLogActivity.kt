@@ -110,12 +110,16 @@ class ChatLogActivity : AppCompatActivity() {
             findViewById<Button>(R.id.image_send_button_chat_log).alpha = 0f
             // Сжатие + base64 — в фоне (ImageLoader), результат приходит в main.
             // Картинку НЕ грузим в Firebase Storage — кладём base64 прямо в БД.
-            ImageLoader.compressUri(this, uri) { b64 ->
-                if (isFinishing || isDestroyed) return@compressUri
-                if (b64 == null) {
-                    Toast.makeText(this, "Не удалось обработать картинку", Toast.LENGTH_SHORT).show()
-                } else {
-                    writeMessage(b64, ChatMessage.TYPE_IMAGE)
+            ImageLoader.compressUriDetailed(this, uri) { result ->
+                if (isFinishing || isDestroyed) return@compressUriDetailed
+                when (result) {
+                    is ImageUtils.CompressResult.Ok -> writeMessage(result.base64, ChatMessage.TYPE_IMAGE)
+                    is ImageUtils.CompressResult.TooLarge -> Toast.makeText(
+                        this, "Картинка слишком большая (>10 МБ даже после сжатия)", Toast.LENGTH_SHORT
+                    ).show()
+                    ImageUtils.CompressResult.Failed -> Toast.makeText(
+                        this, "Не удалось обработать картинку", Toast.LENGTH_SHORT
+                    ).show()
                 }
                 resetImagePickerUi()
             }
@@ -194,6 +198,15 @@ class ChatLogActivity : AppCompatActivity() {
         val mirrorKey = db.child(DbPaths.conversation(toId, fromId)).push().key ?: return
 
         val nowSec = System.currentTimeMillis() / 1000
+
+        // Страховка на случай обхода лимита (старый клиент и т.п.): в БД не пишем
+        // base64 длиннее MAX_BASE64_BYTES — иначе раздуваем RTDB.
+        if (msgType == ChatMessage.TYPE_IMAGE && text.length > ImageUtils.MAX_BASE64_BYTES) {
+            Log.e(TAG, "Изображение ${text.length} B > лимита ${ImageUtils.MAX_BASE64_BYTES} B — запись отклонена")
+            android.widget.Toast.makeText(this, "Картинка слишком большая для отправки", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val chatMessage = ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType)
         // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
         val outboxKey = chatMessage.id

@@ -26,6 +26,16 @@ object ImageUtils {
     const val JPEG_QUALITY = 75           // 1..100
     const val BASE64_PREFIX = "data:image/jpeg;base64,"
 
+    /** Жёсткий лимит на одну картинку в RTDB (base64-строка), чтобы не раздувать базу. */
+    const val MAX_BASE64_BYTES = 10 * 1024 * 1024   // 10 МБ base64 (~7.3 МБ бинарного JPEG)
+
+    /** Результат сжатия: base64 или понятная причина отказа. */
+    sealed class CompressResult {
+        data class Ok(val base64: String) : CompressResult()
+        data class TooLarge(val base64Bytes: Int) : CompressResult()
+        object Failed : CompressResult()
+    }
+
     /**
      * Копирует поток из ContentResolver целиком в memory.
      * Нужно потому, что openInputStream() у content:// URI может вернуть null или
@@ -70,23 +80,54 @@ object ImageUtils {
 
     /**
      * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
-     * @return null если файл не читается или пустой результат
+     * Возвращает CompressResult: Ok(base64) | TooLarge | Failed.
+     * Если после первого прохода base64 больше MAX_BASE64_BYTES — автоматически
+     * пережимает с меньшим размером/качеством; при невозможности уложиться — TooLarge.
      */
-    fun compressToBase64(context: Context, uri: Uri): String? {
+    fun compressToResult(context: Context, uri: Uri): CompressResult {
         val bmp = decodeSampledBitmap(context, uri, MAX_DIMENSION) ?: run {
             Log.e(TAG, "Не удалось прочитать/декодировать изображение из $uri (см. логи выше: поток или формат)")
-            return null
+            return CompressResult.Failed
         }
-        val scaled = resizeToMax(bmp, MAX_DIMENSION)
 
-        val out = ByteArrayOutputStream(96 * 1024)
-        scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-        val bytes = out.toByteArray()
+        // Ступени сжатия: от штатной к агрессивной. Первая почти всегда достаточна.
+        val ladder = listOf(
+            MAX_DIMENSION to JPEG_QUALITY,          // 1280px q75
+            960 to 65,                              // запасной вариант
+            720 to 55                               // последний шанс
+        )
 
-        if (bytes.isEmpty()) return null
-        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-        Log.d(TAG, "Изображение: ${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
-        return BASE64_PREFIX + b64
+        for ((dim, quality) in ladder) {
+            val scaled = resizeToMax(bmp, dim)
+            val out = ByteArrayOutputStream(96 * 1024)
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            val bytes = out.toByteArray()
+            if (scaled !== bmp) scaled.recycle()
+            if (bytes.isEmpty()) continue
+
+            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            Log.d(TAG, "Изображение (${dim}px q$quality): ${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
+            if (b64.length <= MAX_BASE64_BYTES) {
+                return CompressResult.Ok(BASE64_PREFIX + b64)
+            }
+        }
+        // Даже последняя ступень не влезла (бывает с аномальными источниками) — отказ.
+        return CompressResult.TooLarge(0)
+    }
+
+    /**
+     * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
+     * @return null если файл не читается, пустой результат или не влезает в лимит 10 МБ.
+     */
+    fun compressToBase64(context: Context, uri: Uri): String? {
+        return when (val r = compressToResult(context, uri)) {
+            is CompressResult.Ok -> r.base64
+            is CompressResult.TooLarge -> {
+                Log.e(TAG, "Картинка не прошла в лимит ${MAX_BASE64_BYTES / 1024 / 1024} МБ даже после максимального сжатия")
+                null
+            }
+            CompressResult.Failed -> null
+        }
     }
 
     /** Обратное преобразование: base64 (с префиксом или без) -> Bitmap. */
