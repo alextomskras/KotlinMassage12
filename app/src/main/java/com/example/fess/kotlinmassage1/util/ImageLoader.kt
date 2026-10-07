@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.models.User
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -27,8 +28,8 @@ object ImageLoader {
     private val executor = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
 
-    /** Ключ для setTag — не конфликтует с android.* id. */
-    private val TAG_KEY = View.generateViewId()
+    /** Ключ для setTag — ОБЯЗАТЕЛЬНО ресурсный id (R.id.*), иначе setTag(key,value) падает. */
+    private val TAG_KEY = R.id.tag_image_data
 
     /**
      * base64-payload -> Bitmap в фоновом потоке; результат применяется к ImageView в main.

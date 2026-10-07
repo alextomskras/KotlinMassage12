@@ -2,4 +2,8 @@
 <!-- id для setTag/getTag: позиция привязанной ячейки (защита асинхронных колбэков). -->
 <resources>
     <item name="tag_bound_position" type="id" />
+    <!-- id для setTag/getTag в ImageLoader. ДОЛЖЕН быть ресурсным id:
+         View.generateViewId() даёт НЕ-ресурсный id, и одноаргументный
+         View.setTag(int,Object) кидает IllegalArgumentException (краш чата с картинками). -->
+    <item name="tag_image_data" type="id" />
 </resources>
