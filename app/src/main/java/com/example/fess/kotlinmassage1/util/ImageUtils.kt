@@ -26,21 +26,38 @@ object ImageUtils {
     const val JPEG_QUALITY = 75           // 1..100
     const val BASE64_PREFIX = "data:image/jpeg;base64,"
 
+    /**
+     * Копирует поток из ContentResolver целиком в memory.
+     * Нужно потому, что openInputStream() у content:// URI может вернуть null или
+     * пустой поток без исключения (Samsung Gallery / Google Photos на Android 13+),
+     * а также чтобы не держать провайдер занятым между двумя декодами.
+     */
+    private fun readBytes(context: Context, uri: Uri): ByteArray? {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Поток не читается ($uri): ${e.message}")
+            null
+        }
+    }
+
     /** Читает Uri -> Bitmap c даунсемплом (не грузим полноразмерный JPEG в память). */
     private fun decodeSampledBitmap(context: Context, uri: Uri, reqSize: Int): Bitmap? {
+        val bytes = readBytes(context, uri) ?: return null
+
         val optsNoBounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, optsNoBounds)
-        } ?: return null
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, optsNoBounds)
+        if (optsNoBounds.outWidth <= 0 || optsNoBounds.outHeight <= 0) {
+            Log.e(TAG, "Байты прочитаны (${bytes.size} B), но это не изображение: $uri")
+            return null
+        }
 
         var sample = 1
         val maxSide = Math.max(optsNoBounds.outWidth, optsNoBounds.outHeight)
         while (maxSide / sample > reqSize * 2) sample *= 2
 
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, opts)
-        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 
     private fun resizeToMax(bitmap: Bitmap, maxSide: Int): Bitmap {
@@ -57,7 +74,7 @@ object ImageUtils {
      */
     fun compressToBase64(context: Context, uri: Uri): String? {
         val bmp = decodeSampledBitmap(context, uri, MAX_DIMENSION) ?: run {
-            Log.e(TAG, "Не удалось декодировать изображение из $uri")
+            Log.e(TAG, "Не удалось прочитать/декодировать изображение из $uri (см. логи выше: поток или формат)")
             return null
         }
         val scaled = resizeToMax(bmp, MAX_DIMENSION)

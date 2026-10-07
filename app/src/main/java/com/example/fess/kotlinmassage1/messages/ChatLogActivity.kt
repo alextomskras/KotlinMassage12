@@ -92,7 +92,21 @@ class ChatLogActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (requestCode == REQUEST_PICK_IMAGE && resultCode == Activity.RESULT_OK) {
-            val uri = data?.data ?: return
+            var uri = data?.data ?: return
+            // Подстраховка: если picker вернул clip-data без основного data (бывает у Google Photos),
+            // берём первую строку из ClipData.
+            if (uri.toString().isEmpty()) {
+                uri = data.clipData?.getItemAt(0)?.uri ?: return
+            }
+            // Постоянная URI-разрешение на content:// — иначе ContentResolver имеет право вернуть null
+            // при фоновом чтении (Samsung Gallery / Android 13+).
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+                // не все URI поддерживают persistable — не страшно, читаем как есть
+            }
             findViewById<Button>(R.id.image_send_button_chat_log).alpha = 0f
             // Сжатие + base64 — в фоне (ImageLoader), результат приходит в main.
             // Картинку НЕ грузим в Firebase Storage — кладём base64 прямо в БД.
