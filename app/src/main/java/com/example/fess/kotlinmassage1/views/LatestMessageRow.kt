@@ -38,8 +38,10 @@ class LatestMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, DialogIt
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
 
-        viewHolder.itemView.findViewById<TextView>(R.id.text_textview_latest_message).text =
-            chatMessage.text.take(120)
+        // base64-картинку в список диалогов не показываем — только метку
+        val preview = if (ImageUtils.isImagePayload(chatMessage.text)) "📷 Картинка"
+                      else chatMessage.text.take(120)
+        viewHolder.itemView.findViewById<TextView>(R.id.text_textview_latest_message).text = preview
 
         val partnerId = chatMessage.partnerId(FirebaseAuth.getInstance().uid)
         ImageLoader.fetchUser(partnerId) { user ->
