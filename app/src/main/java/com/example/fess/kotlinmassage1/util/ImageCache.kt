@@ -13,9 +13,10 @@ import java.io.FileOutputStream
  *
  * Картинка в RTDB живёт только 7 дней (relay-зона /transfers), поэтому скачанное
  * сохраняем на телефоне: история чата переживает очистку трансфера.
- * Файлы лежат в cacheDir/chat_images/<msgId>.webp (legacy-файлы .jpg читаются как
- * есть — BitmapFactory определяет формат по содержимому), итоговый размер
- * <= ~500 КБ (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
+ * Файлы лежат в cacheDir/chat_images/<msgId>.img — расширение нейтральное, т.к.
+ * внутри может быть WebP (новый формат) или JPEG (старые сообщения/fallback);
+ * BitmapFactory определяет формат по сигнатуре байт. Итоговый размер <= ~500 КБ
+ * (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
  */
 object ImageCache {
 

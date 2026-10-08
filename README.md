@@ -65,9 +65,10 @@ push-уведомлениями, плюс Python-бэкенд — релей д�
 - Groupie 2.x недоступен (jcenter мёртв, JitPack 401) — от него отказались:
   списки чатов и переписка построены на обычных `RecyclerView.Adapter`
   (`views/ChatRecyclerAdapter.kt`, `views/LatestMessageRow.kt`).
-- Картинки: Picasso + CircleImageView. Новый формат чат-картинок — **WebP**
-  (`ImageUtils.compressToResult`, q80, fallback на JPEG); старые JPEG-сообщения
-  продолжают отображаться (формат определяется по data-URI префиксу).
+- Картинки: Picasso + CircleImageView. Отправка изображений — в формате WebP
+  (lossy, q80; поддерживается Android с API 17, minSdk 21 покрывает), ~25–35% экономии
+  против JPEG; при недоступности WebP-энкодера на устройстве — автоматический
+  fallback на JPEG. Старые JPEG-сообщения продолжают отображаться (декод по сигнатуре).
 
 ## Push-релей (backend)
 Клиент пишет сообщение в `outbox/`, бэкенд с Firebase Admin SDK читает outbox,

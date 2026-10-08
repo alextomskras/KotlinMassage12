@@ -4,9 +4,9 @@ package com.example.fess.kotlinmassage1.models
  * Сообщение чата.
  *
  * Тип сообщения больше НЕ определяется эвристикой "substringBefore('.') == https://firebasestorage".
- * Картинки лежат прямо в поле [text] как base64 data-URI (data:image/webp;base64,...,
- * legacy — data:image/jpeg;base64,...),
- * а явный признак типа — префикс; см. ImageUtils.isImagePayload().
+ * Картинки лежат прямо в поле [text] как base64 data-URI (data:image/webp;base64,...;
+ * у старых сообщений — data:image/jpeg), а явный признак типа — префикс "data:image";
+ * см. ImageUtils.isImagePayload().
  *
  * Поле [pushed] нужно для бэкенда-релея: он слушает /outbox и отправляет FCM,
  * затем может пометить запись обработанной.
