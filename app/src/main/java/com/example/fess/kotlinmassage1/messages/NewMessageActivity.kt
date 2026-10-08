@@ -86,6 +86,7 @@ class NewMessageActivity : AppCompatActivity() {
 
 class UserItem(val user: User) : ChatRowDelegate {
     override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
 
     override fun layoutRes(): Int = R.layout.user_row_new_message
 
