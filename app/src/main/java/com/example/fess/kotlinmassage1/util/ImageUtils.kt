@@ -58,7 +58,7 @@ object ImageUtils {
         }
     }
 
-    /** Читает Uri -> Bitmap c даунсемплом (не грузим полноразмерный JPEG в память). */
+    /** Читает Uri картинки -> Bitmap c даунсемплом (не грузим полноразмерный файл в память). */
     private fun decodeSampledBitmap(context: Context, uri: Uri, reqSize: Int): Bitmap? {
         val bytes = readBytes(context, uri) ?: return null
 
@@ -163,13 +163,12 @@ object ImageUtils {
     /**
      * Обратное преобразование: base64 data-URI (webp/jpeg, с префиксом или без) -> Bitmap.
      * Формат определяется по сигнатуре байт (BitmapFactory), поэтому старые JPEG-сообщения
-     * и новые WebP декодируются одним путём. Префикс снимаем для любого image/* типа.
+     * и новые WebP декодируются одним путём. Любой data:image/* префикс снимаем подстрокой
+     * после "base64,".
      */
     fun base64ToBitmap(data: String): Bitmap? {
         return try {
-            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data)
-                      else if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length)
-                      else data
+            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data) else data
             val bytes = Base64.decode(raw, Base64.DEFAULT)
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         } catch (e: Exception) {
