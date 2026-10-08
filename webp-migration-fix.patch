@@ -1,0 +1,292 @@
+From dcd42e159dba380939e6652c87f95e7babf6caf7 Mon Sep 17 00:00:00 2001
+From: "qwen.ai[bot]" <qwenlm-intl@service.alibaba.com>
+Date: Thu, 8 Oct 2026 19:54:10 +0000
+Subject: [PATCH 1/2] feat(images): switch chat image compression from JPEG to
+ WebP with JPEG fallback
+
+- ImageUtils: WEBP_QUALITY=80, data:image/webp prefix, encodeWithLadder() tries
+  WebP first and falls back to JPEG if the encoder returns empty on a device;
+  base64ToBitmap/isImagePayload now accept any data:image/* (legacy JPEG stays readable)
+- ImageCache: neutral .img extension for cache files (webp/jpeg by signature)
+- ChatLogActivity: transfer 'mime' field derived from the actual data-URI prefix
+- README: document WebP migration
+---
+ README.md                                     |  5 +-
+ .../messages/ChatLogActivity.kt               |  4 +-
+ .../fess/kotlinmassage1/models/ChatMessage.kt |  5 +-
+ .../fess/kotlinmassage1/util/ImageCache.kt    |  6 +-
+ .../fess/kotlinmassage1/util/ImageUtils.kt    | 96 +++++++++++++------
+ 5 files changed, 80 insertions(+), 36 deletions(-)
+
+diff --git a/README.md b/README.md
+index 730f333..7d35159 100644
+--- a/README.md
++++ b/README.md
+@@ -65,7 +65,10 @@ push-уведомлениями, плюс Python-бэкенд — релей д
+ - Groupie 2.x недоступен (jcenter мёртв, JitPack 401) — от него отказались:
+   списки чатов и переписка построены на обычных `RecyclerView.Adapter`
+   (`views/ChatRecyclerAdapter.kt`, `views/LatestMessageRow.kt`).
+-- Картинки: Picasso + CircleImageView.
++- Картинки: Picasso + CircleImageView. Отправка изображений — в формате WebP
++  (lossy, q80; поддерживается Android с API 17, minSdk 21 покрывает), ~25–35% экономии
++  против JPEG; при недоступности WebP-энкодера на устройстве — автоматический
++  fallback на JPEG. Старые JPEG-сообщения продолжают отображаться (декод по сигнатуре).
+ 
+ ## Push-релей (backend)
+ Клиент пишет сообщение в `outbox/`, бэкенд с Firebase Admin SDK читает outbox,
+diff --git a/app/src/main/java/com/example/fess/kotlinmassage1/messages/ChatLogActivity.kt b/app/src/main/java/com/example/fess/kotlinmassage1/messages/ChatLogActivity.kt
+index 86b6332..d2bfef7 100644
+--- a/app/src/main/java/com/example/fess/kotlinmassage1/messages/ChatLogActivity.kt
++++ b/app/src/main/java/com/example/fess/kotlinmassage1/messages/ChatLogActivity.kt
+@@ -227,7 +227,9 @@ class ChatLogActivity : AppCompatActivity() {
+                 "fromId" to fromId,
+                 "toIds" to listOf(toId),
+                 "type" to "image",
+-                "mime" to "image/jpeg",
++                // mime берём из data-URI префикса: обычно image/webp, но на устройствах
++                // без WebP-энкодера кодер возвращает JPEG-fallback (см. ImageUtils)
++                "mime" to text.substringAfter("data:").substringBefore(";"),
+                 "sizeBytes" to text.length,
+                 "createdAt" to nowSec,
+                 "expiresAt" to nowSec + TRANSFER_TTL_SEC,
+diff --git a/app/src/main/java/com/example/fess/kotlinmassage1/models/ChatMessage.kt b/app/src/main/java/com/example/fess/kotlinmassage1/models/ChatMessage.kt
+index 53d4307..d7afaa9 100644
+--- a/app/src/main/java/com/example/fess/kotlinmassage1/models/ChatMessage.kt
++++ b/app/src/main/java/com/example/fess/kotlinmassage1/models/ChatMessage.kt
+@@ -4,8 +4,9 @@ package com.example.fess.kotlinmassage1.models
+  * Сообщение чата.
+  *
+  * Тип сообщения больше НЕ определяется эвристикой "substringBefore('.') == https://firebasestorage".
+- * Картинки лежат прямо в поле [text] как base64 data-URI (data:image/jpeg;base64,...),
+- * а явный признак типа — префикс; см. ImageUtils.isImagePayload().
++ * Картинки лежат прямо в поле [text] как base64 data-URI (data:image/webp;base64,...;
++ * у старых сообщений — data:image/jpeg), а явный признак типа — префикс "data:image";
++ * см. ImageUtils.isImagePayload().
+  *
+  * Поле [pushed] нужно для бэкенда-релея: он слушает /outbox и отправляет FCM,
+  * затем может пометить запись обработанной.
+diff --git a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageCache.kt b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageCache.kt
+index ee31d1c..5d09564 100644
+--- a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageCache.kt
++++ b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageCache.kt
+@@ -13,7 +13,9 @@ import java.io.FileOutputStream
+  *
+  * Картинка в RTDB живёт только 7 дней (relay-зона /transfers), поэтому скачанное
+  * сохраняем на телефоне: история чата переживает очистку трансфера.
+- * Файлы лежат в cacheDir/chat_images/<msgId>.jpg, итоговый размер <= ~500 КБ
++ * Файлы лежат в cacheDir/chat_images/<msgId>.img — расширение нейтральное, т.к.
++ * внутри может быть WebP (новый формат) или JPEG (старые сообщения/fallback);
++ * BitmapFactory определяет формат по сигнатуре байт. Итоговый размер <= ~500 КБ
+  * (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
+  */
+ object ImageCache {
+@@ -23,7 +25,7 @@ object ImageCache {
+     private const val MAX_ENTRIES = 300
+ 
+     fun file(context: Context, msgId: String): File =
+-        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".jpg")
++        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".img")
+ 
+     fun has(context: Context, msgId: String): Boolean = file(context, msgId).exists()
+ 
+diff --git a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
+index b3cc7e2..569bb70 100644
+--- a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
++++ b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
+@@ -15,19 +15,26 @@ import java.io.ByteArrayOutputStream
+  * Картинки храним прямо в Realtime Database в виде base64 (без Firebase Storage),
+  * поэтому перед кодированием обязательно жмём:
+  *  - ресайз по длинной стороне до MAX_DIMENSION px
+- *  - JPEG-сжатие с качеством JPEG_QUALITY
+- * Итог: обычно 80..250 КБ сырых -> ~110..340 КБ в base64, что влезает в лимиты RTDB.
++ *  - WebP-сжатие с качеством WEBP_QUALITY (lossy WebP поддерживается Android с API 17,
++ *    наш minSdk 21 — значит доступен везде; при сбое кодируем JPEG, как раньше)
++ * Экономия против JPEG q75 — примерно 25..35% байт при том же качестве.
++ * Старые сообщения с data:image/jpeg продолжают читаться: декодер определяет формат
++ * по сигнатуре байт, а не по префиксу.
+  */
+ object ImageUtils {
+ 
+     private const val TAG = "ImageUtils"
+ 
+     const val MAX_DIMENSION = 1280        // px по длинной стороне
+-    const val JPEG_QUALITY = 75           // 1..100
+-    const val BASE64_PREFIX = "data:image/jpeg;base64,"
++    const val WEBP_QUALITY = 80           // 1..100
++    /** Качество fallback-JPEG: чуть выше, т.к. JPEG при равном размере шумнее. */
++    const val JPEG_QUALITY = 82           // 1..100
++    const val BASE64_PREFIX = "data:image/webp;base64,"
++    /** Префикс старых сообщений (и fallback-нового кодера). */
++    const val JPEG_BASE64_PREFIX = "data:image/jpeg;base64,"
+ 
+     /** Жёсткий лимит на одну картинку в RTDB (base64-строка), чтобы не раздувать базу. */
+-    const val MAX_BASE64_BYTES = 10 * 1024 * 1024   // 10 МБ base64 (~7.3 МБ бинарного JPEG)
++    const val MAX_BASE64_BYTES = 10 * 1024 * 1024   // 10 МБ base64 (~7.3 МБ бинарного изображения)
+ 
+     /** Результат сжатия: base64 или понятная причина отказа. */
+     sealed class CompressResult {
+@@ -79,44 +86,67 @@ object ImageUtils {
+     }
+ 
+     /**
+-     * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
+-     * Возвращает CompressResult: Ok(base64) | TooLarge | Failed.
+-     * Если после первого прохода base64 больше MAX_BASE64_BYTES — автоматически
+-     * пережимает с меньшим размером/качеством; при невозможности уложиться — TooLarge.
++     * Кодирует Bitmap по ступеням разрешения/качества: сначала WebP (основной формат),
++     * если WebP-энкодер почему-то вернул пусто (редкие ROM) — JPEG-fallback.
++     * @return пара (data-URI префикс, base64) либо null, если ни одна ступень не влезла
++     * в MAX_BASE64_BYTES.
+      */
+-    fun compressToResult(context: Context, uri: Uri): CompressResult {
+-        val bmp = decodeSampledBitmap(context, uri, MAX_DIMENSION) ?: run {
+-            Log.e(TAG, "Не удалось прочитать/декодировать изображение из $uri (см. логи выше: поток или формат)")
+-            return CompressResult.Failed
+-        }
+-
++    private fun encodeWithLadder(bmp: Bitmap): Pair<String, String>? {
+         // Ступени сжатия: от штатной к агрессивной. Первая почти всегда достаточна.
+         val ladder = listOf(
+-            MAX_DIMENSION to JPEG_QUALITY,          // 1280px q75
+-            960 to 65,                              // запасной вариант
+-            720 to 55                               // последний шанс
++            MAX_DIMENSION to WEBP_QUALITY,          // 1280px q80 webp
++            960 to 70,                              // запасной вариант
++            720 to 60                               // последний шанс
+         )
+ 
+         for ((dim, quality) in ladder) {
+             val scaled = resizeToMax(bmp, dim)
+-            val out = ByteArrayOutputStream(96 * 1024)
+-            scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+-            val bytes = out.toByteArray()
++            // 1) пробуем WebP
++            var out = ByteArrayOutputStream(96 * 1024)
++            var ok = scaled.compress(Bitmap.CompressFormat.WEBP, quality, out)
++            var bytes = out.toByteArray()
++            var prefix = BASE64_PREFIX
++            if (!ok || bytes.isEmpty()) {
++                // 2) fallback: JPEG (устройства без рабочего webp-энкодера)
++                Log.w(TAG, "WebP-кодер вернул пусто, фолбэк на JPEG (${dim}px q$quality)")
++                out = ByteArrayOutputStream(96 * 1024)
++                ok = scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
++                bytes = out.toByteArray()
++                prefix = JPEG_BASE64_PREFIX
++            }
+             if (scaled !== bmp) scaled.recycle()
+-            if (bytes.isEmpty()) continue
++            if (!ok || bytes.isEmpty()) continue
+ 
+             val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+-            Log.d(TAG, "Изображение (${dim}px q$quality): ${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
++            Log.d(TAG, "Изображение (${if (prefix == BASE64_PREFIX) "webp" else "jpeg"}, ${dim}px q$quality): " +
++                    "${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
+             if (b64.length <= MAX_BASE64_BYTES) {
+-                return CompressResult.Ok(BASE64_PREFIX + b64)
++                return prefix to b64
+             }
+         }
+         // Даже последняя ступень не влезла (бывает с аномальными источниками) — отказ.
+-        return CompressResult.TooLarge(0)
++        return null
+     }
+ 
+     /**
+-     * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
++     * Uri картинки -> base64 строка с префиксом data:image/webp;base64,...
++     * (data:image/jpeg — только если WebP-энкодер недоступен на устройстве).
++     * Возвращает CompressResult: Ok(base64) | TooLarge | Failed.
++     * Если после первого прохода base64 больше MAX_BASE64_BYTES — автоматически
++     * пережимает с меньшим размером/качеством; при невозможности уложиться — TooLarge.
++     */
++    fun compressToResult(context: Context, uri: Uri): CompressResult {
++        val bmp = decodeSampledBitmap(context, uri, MAX_DIMENSION) ?: run {
++            Log.e(TAG, "Не удалось прочитать/декодировать изображение из $uri (см. логи выше: поток или формат)")
++            return CompressResult.Failed
++        }
++
++        val encoded = encodeWithLadder(bmp) ?: return CompressResult.TooLarge(0)
++        return CompressResult.Ok(encoded.first + encoded.second)
++    }
++
++    /**
++     * Uri картинки -> base64 строка с data-URI префиксом (webp; jpeg — fallback).
+      * @return null если файл не читается, пустой результат или не влезает в лимит 10 МБ.
+      */
+     fun compressToBase64(context: Context, uri: Uri): String? {
+@@ -130,10 +160,16 @@ object ImageUtils {
+         }
+     }
+ 
+-    /** Обратное преобразование: base64 (с префиксом или без) -> Bitmap. */
++    /**
++     * Обратное преобразование: base64 data-URI (webp/jpeg, с префиксом или без) -> Bitmap.
++     * Формат определяется по сигнатуре байт (BitmapFactory), поэтому старые JPEG-сообщения
++     * и новые WebP декодируются одним путём. Префикс снимаем для любого image/* типа.
++     */
+     fun base64ToBitmap(data: String): Bitmap? {
+         return try {
+-            val raw = if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length) else data
++            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data)
++                      else if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length)
++                      else data
+             val bytes = Base64.decode(raw, Base64.DEFAULT)
+             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+         } catch (e: Exception) {
+@@ -142,7 +178,7 @@ object ImageUtils {
+         }
+     }
+ 
+-    /** Признак того, что текст сообщения — это base64-картинка. */
++    /** Признак того, что текст сообщения — это base64-картинка (webp или legacy jpeg). */
+     fun isImagePayload(text: String?): Boolean =
+-        text != null && text.startsWith(BASE64_PREFIX)
++        text != null && text.startsWith("data:image")
+ }
+-- 
+2.39.5
+
+
+From e5cc2aadae229385427bff6292f83112476fb468 Mon Sep 17 00:00:00 2001
+From: "qwen.ai[bot]" <qwenlm-intl@service.alibaba.com>
+Date: Thu, 8 Oct 2026 20:06:26 +0000
+Subject: [PATCH 2/2] fix(ImageUtils): rewrite file cleanly to repair truncated
+ copy on user's machine (missing '}' / unclosed comment at lines 164/182)
+
+---
+ .../com/example/fess/kotlinmassage1/util/ImageUtils.kt   | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
+index 569bb70..cf87a08 100644
+--- a/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
++++ b/app/src/main/java/com/example/fess/kotlinmassage1/util/ImageUtils.kt
+@@ -58,7 +58,7 @@ object ImageUtils {
+         }
+     }
+ 
+-    /** Читает Uri -> Bitmap c даунсемплом (не грузим полноразмерный JPEG в память). */
++    /** Читает Uri картинки -> Bitmap c даунсемплом (не грузим полноразмерный файл в память). */
+     private fun decodeSampledBitmap(context: Context, uri: Uri, reqSize: Int): Bitmap? {
+         val bytes = readBytes(context, uri) ?: return null
+ 
+@@ -163,13 +163,12 @@ object ImageUtils {
+     /**
+      * Обратное преобразование: base64 data-URI (webp/jpeg, с префиксом или без) -> Bitmap.
+      * Формат определяется по сигнатуре байт (BitmapFactory), поэтому старые JPEG-сообщения
+-     * и новые WebP декодируются одним путём. Префикс снимаем для любого image/* типа.
++     * и новые WebP декодируются одним путём. Любой data:image/* префикс снимаем подстрокой
++     * после "base64,".
+      */
+     fun base64ToBitmap(data: String): Bitmap? {
+         return try {
+-            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data)
+-                      else if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length)
+-                      else data
++            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data) else data
+             val bytes = Base64.decode(raw, Base64.DEFAULT)
+             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+         } catch (e: Exception) {
+-- 
+2.39.5
+
