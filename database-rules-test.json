@@ -36,6 +36,15 @@
         ".read": "auth != null && (auth.token.admin === true || auth.uid === data.child('fromId').val())",
         ".write": "auth != null"
       }
+    },
+    "transfers": {
+      "$tid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || auth.uid === data.child('fromId').val() || !data.child('deliveredTo').child(auth.uid).exists())",
+        "data": {
+          ".write": "auth == null || !data.exists() || auth.uid === root.child('transfers').child($tid).child('fromId').val()"
+        }
+      }
     }
   }
 }
