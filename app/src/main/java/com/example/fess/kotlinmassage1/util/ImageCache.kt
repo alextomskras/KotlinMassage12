@@ -22,10 +22,17 @@ object ImageCache {
 
     private const val TAG = "ImageCache"
     private const val DIR_NAME = "chat_images"
+    private const val EXT = ".webp"
+    private const val LEGACY_EXT = ".jpg"
     private const val MAX_ENTRIES = 300
 
-    fun file(context: Context, msgId: String): File =
-        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".img")
+    fun file(context: Context, msgId: String): File {
+        val dir = context.cacheDir.resolve(DIR_NAME)
+        val webp = File(dir, sanitize(msgId) + EXT)
+        val legacy = File(dir, sanitize(msgId) + LEGACY_EXT)
+        // новый формат приоритетен; legacy .jpg возвращаем как есть (декодер сам разберётся)
+        return if (!webp.exists() && legacy.exists()) legacy else webp
+    }
 
     fun has(context: Context, msgId: String): Boolean = file(context, msgId).exists()
 
