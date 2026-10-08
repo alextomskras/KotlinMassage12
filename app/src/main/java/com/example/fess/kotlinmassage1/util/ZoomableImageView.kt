@@ -43,8 +43,16 @@ class ZoomableImageView @JvmOverloads constructor(
             }
         })
 
+    /** Одиночный тап по картинке (для закрытия fullscreen-просмотра). */
+    var onSingleTapListener: (() -> Unit)? = null
+
     private val tapDetector = GestureDetector(context,
         object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                onSingleTapListener?.invoke()
+                return true
+            }
+
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 imageMatrix.getValues(matrixValues)
                 val fitScale = minOf(

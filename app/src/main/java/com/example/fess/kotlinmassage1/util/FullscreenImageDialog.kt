@@ -36,8 +36,13 @@ class FullscreenImageDialog(
         val image = findViewById<ZoomableImageView>(R.id.fullscreen_image)
         val container = findViewById<ViewGroup>(R.id.fullscreen_container)
 
-        // закрытие по тапу мимо картинки
+        // закрытие по тапу мимо картинки (по самой картинке — см. onSingleTapListener ниже)
         container.setOnClickListener { dismiss() }
+
+        // закрытие по одиночному тапу на саму картинку — как в WhatsApp.
+        // onDoubleTap в ZoomableImageView при этом остаётся зумом:
+        // GestureDetector ждёт подтверждения, что это не даблтап.
+        image.onSingleTapListener = { dismiss() }
 
         ImageLoader.loadFullBitmap(context, transferRef, payload) { bmp ->
             if (!isShowing()) return@loadFullBitmap
