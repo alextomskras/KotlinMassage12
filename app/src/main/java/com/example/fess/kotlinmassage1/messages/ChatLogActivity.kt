@@ -227,7 +227,7 @@ class ChatLogActivity : AppCompatActivity() {
                 "fromId" to fromId,
                 "toIds" to listOf(toId),
                 "type" to "image",
-                "mime" to "image/jpeg",
+                "mime" to ImageUtils.mimeOf(text),
                 "sizeBytes" to text.length,
                 "createdAt" to nowSec,
                 "expiresAt" to nowSec + TRANSFER_TTL_SEC,

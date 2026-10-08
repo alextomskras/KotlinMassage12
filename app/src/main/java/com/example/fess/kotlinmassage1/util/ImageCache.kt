@@ -22,8 +22,20 @@ object ImageCache {
     private const val DIR_NAME = "chat_images"
     private const val MAX_ENTRIES = 300
 
-    fun file(context: Context, msgId: String): File =
-        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".jpg")
+    /** Имя файла без расширения — одно и то же для всех форматов. */
+    private fun baseName(msgId: String): String = sanitize(msgId)
+
+    /** Актуальный файл кэша (webp — новый формат, jpg — legacy). */
+    fun file(context: Context, msgId: String): File {
+        val dir = context.cacheDir.resolve(DIR_NAME)
+        val webp = File(dir, baseName(msgId) + ".webp")
+        if (webp.exists()) return webp
+        val jpg = File(dir, baseName(msgId) + ".jpg")
+        if (jpg.exists()) return jpg
+        // файла ещё нет — целевое расширение определяем по mime payload'а (если это data-URI)
+        val ext = if (ImageUtils.mimeOf(msgId).startsWith("image/jpeg")) "jpg" else "webp"
+        return File(dir, baseName(msgId) + "." + ext)
+    }
 
     fun has(context: Context, msgId: String): Boolean = file(context, msgId).exists()
 
@@ -34,7 +46,14 @@ object ImageCache {
             val bytes = Base64.decode(raw, Base64.DEFAULT)
             val dir = context.cacheDir.resolve(DIR_NAME)
             if (!dir.exists()) dir.mkdirs()
-            FileOutputStream(file(context, msgId)).use { it.write(bytes) }
+            // расширение — по фактическим байтам (RIFF....WEBP vs JPEG SOI)
+            val ext = if (bytes.size > 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                           String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP") "webp" else "jpg"
+            val target = File(dir, baseName(msgId) + "." + ext)
+            // если раньше был кэш в другом расширении — убираем дубликат
+            val other = File(dir, baseName(msgId) + "." + if (ext == "webp") "jpg" else "webp")
+            if (other.exists()) other.delete()
+            FileOutputStream(target).use { it.write(bytes) }
             trim(dir)
             true
         } catch (e: Exception) {
