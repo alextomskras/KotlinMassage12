@@ -227,9 +227,7 @@ class ChatLogActivity : AppCompatActivity() {
                 "fromId" to fromId,
                 "toIds" to listOf(toId),
                 "type" to "image",
-                // mime берём из data-URI префикса: обычно image/webp, но на устройствах
-                // без WebP-энкодера кодер возвращает JPEG-fallback (см. ImageUtils)
-                "mime" to text.substringAfter("data:").substringBefore(";"),
+                "mime" to ImageUtils.mimeOf(text),
                 "sizeBytes" to text.length,
                 "createdAt" to nowSec,
                 "expiresAt" to nowSec + TRANSFER_TTL_SEC,
