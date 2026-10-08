@@ -46,7 +46,7 @@ class ZoomableImageView @JvmOverloads constructor(
     private val tapDetector = GestureDetector(context,
         object : GestureDetector.SimpleOnGestureListener() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                getImageMatrix(matrixValues)
+                imageMatrix.getValues(matrixValues)
                 val fitScale = minOf(
                     width.toFloat() / (drawable?.intrinsicWidth ?: 1).coerceAtLeast(1),
                     height.toFloat() / (drawable?.intrinsicHeight ?: 1).coerceAtLeast(1)
