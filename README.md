@@ -13,6 +13,8 @@ push-уведомлениями, плюс Python-бэкенд — релей д�
 ## Структура проекта
 ```
 ├── app/                      # Android-приложение (Kotlin)
+│   ├── google-services.json  # конфигурация Firebase-проекта (модуль app)
+│   ├── database-rules.json   # правила Realtime Database для деплоя
 │   └── src/main/java/com/example/fess/kotlinmassage1/
 │       ├── messages/         # ChatLogActivity, LatestMessagesActivity, NewMessageActivity
 │       ├── models/           # ChatMessage, User
@@ -22,6 +24,9 @@ push-уведомлениями, плюс Python-бэкенд — релей д�
 │       └── views/            # ChatItems, ChatRecyclerAdapter, LatestMessageRow
 ├── backend/                  # FastAPI/worker-релей outbox → FCM (см. backend/README.md)
 ├── scripts/                  # check_db_structure.py — инспектор схемы Realtime DB
+├── gradle/ + gradlew         # Gradle Wrapper
+├── google-services.json      # копия конфигурации Firebase в корне проекта
+├── database-rules-test.json  # тестовая конфигурация правил БД
 ├── build.gradle              # AGP 8.3.2, Kotlin 1.9.24, google-services 4.4.2
 └── settings.gradle           # include ':app'
 ```
@@ -55,10 +60,11 @@ push-уведомлениями, плюс Python-бэкенд — релей д�
 Конфигурация: `build.gradle` (корень), `app/build.gradle`, `gradle.properties`.
 
 ### Примечания по зависимостям
-- Используется Firebase BOM 32.8.1 (auth, database, messaging).
-- Groupie недоступен из мёртвых репозиториев — вместо него локальный шим
-  `com.xwray.groupie` (см. комментарий в `app/build.gradle`: jar с настоящим
-  Groupie из `app/libs/` удалён, иначе IllegalAccessError в рантайме).
+- Используется Firebase BOM (auth, database, messaging); Storage не нужен —
+  картинки передаются base64 через Realtime DB.
+- Groupie 2.x недоступен (jcenter мёртв, JitPack 401) — от него отказались:
+  списки чатов и переписка построены на обычных `RecyclerView.Adapter`
+  (`views/ChatRecyclerAdapter.kt`, `views/LatestMessageRow.kt`).
 - Картинки: Picasso + CircleImageView.
 
 ## Push-релей (backend)
@@ -84,10 +90,10 @@ python3 scripts/check_db_structure.py   # сверка реальной стру
 ```
 
 ## Известные проблемы / history
-- Проект мигрирован на AGP 8.x / Gradle 8.x / Kotlin 1.9 (см. `backend-import.patch`
-  для импорта бэкенда).
-- В корне лежат логи JVM-крашей `hs_err_pid*.log` и архив старой версии
-  `KotlinMassage1-date-from-timestamp.zip` — не являются частью сборки.
+- Проект мигрирован на AGP 8.x / Gradle 8.x / Kotlin 1.9 (исторический диф —
+  `backend-import.patch`).
+- Репозиторий очищен: удалены логи JVM-крашей `hs_err_pid*.log`, дублирующие
+  PNG-файлы, кэш `__pycache__/` и прочие временные артефакты.
 
 ## Лицензия
 Учебный/личный проект, лицензия не задана.
