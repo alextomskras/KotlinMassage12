@@ -15,19 +15,26 @@ import java.io.ByteArrayOutputStream
  * Картинки храним прямо в Realtime Database в виде base64 (без Firebase Storage),
  * поэтому перед кодированием обязательно жмём:
  *  - ресайз по длинной стороне до MAX_DIMENSION px
- *  - JPEG-сжатие с качеством JPEG_QUALITY
- * Итог: обычно 80..250 КБ сырых -> ~110..340 КБ в base64, что влезает в лимиты RTDB.
+ *  - WebP-сжатие с качеством WEBP_QUALITY (lossy WebP поддерживается Android с API 17,
+ *    наш minSdk 21 — значит доступен везде; при сбое кодируем JPEG, как раньше)
+ * Экономия против JPEG q75 — примерно 25..35% байт при том же качестве.
+ * Старые сообщения с data:image/jpeg продолжают читаться: декодер определяет формат
+ * по сигнатуре байт, а не по префиксу.
  */
 object ImageUtils {
 
     private const val TAG = "ImageUtils"
 
     const val MAX_DIMENSION = 1280        // px по длинной стороне
-    const val JPEG_QUALITY = 75           // 1..100
-    const val BASE64_PREFIX = "data:image/jpeg;base64,"
+    const val WEBP_QUALITY = 80           // 1..100
+    /** Качество fallback-JPEG: чуть выше, т.к. JPEG при равном размере шумнее. */
+    const val JPEG_QUALITY = 82           // 1..100
+    const val BASE64_PREFIX = "data:image/webp;base64,"
+    /** Префикс старых сообщений (и fallback-нового кодера). */
+    const val JPEG_BASE64_PREFIX = "data:image/jpeg;base64,"
 
     /** Жёсткий лимит на одну картинку в RTDB (base64-строка), чтобы не раздувать базу. */
-    const val MAX_BASE64_BYTES = 10 * 1024 * 1024   // 10 МБ base64 (~7.3 МБ бинарного JPEG)
+    const val MAX_BASE64_BYTES = 10 * 1024 * 1024   // 10 МБ base64 (~7.3 МБ бинарного изображения)
 
     /** Результат сжатия: base64 или понятная причина отказа. */
     sealed class CompressResult {
@@ -79,7 +86,51 @@ object ImageUtils {
     }
 
     /**
-     * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
+     * Кодирует Bitmap по ступеням разрешения/качества: сначала WebP (основной формат),
+     * если WebP-энкодер почему-то вернул пусто (редкие ROM) — JPEG-fallback.
+     * @return пара (data-URI префикс, base64) либо null, если ни одна ступень не влезла
+     * в MAX_BASE64_BYTES.
+     */
+    private fun encodeWithLadder(bmp: Bitmap): Pair<String, String>? {
+        // Ступени сжатия: от штатной к агрессивной. Первая почти всегда достаточна.
+        val ladder = listOf(
+            MAX_DIMENSION to WEBP_QUALITY,          // 1280px q80 webp
+            960 to 70,                              // запасной вариант
+            720 to 60                               // последний шанс
+        )
+
+        for ((dim, quality) in ladder) {
+            val scaled = resizeToMax(bmp, dim)
+            // 1) пробуем WebP
+            var out = ByteArrayOutputStream(96 * 1024)
+            var ok = scaled.compress(Bitmap.CompressFormat.WEBP, quality, out)
+            var bytes = out.toByteArray()
+            var prefix = BASE64_PREFIX
+            if (!ok || bytes.isEmpty()) {
+                // 2) fallback: JPEG (устройства без рабочего webp-энкодера)
+                Log.w(TAG, "WebP-кодер вернул пусто, фолбэк на JPEG (${dim}px q$quality)")
+                out = ByteArrayOutputStream(96 * 1024)
+                ok = scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                bytes = out.toByteArray()
+                prefix = JPEG_BASE64_PREFIX
+            }
+            if (scaled !== bmp) scaled.recycle()
+            if (!ok || bytes.isEmpty()) continue
+
+            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            Log.d(TAG, "Изображение (${if (prefix == BASE64_PREFIX) "webp" else "jpeg"}, ${dim}px q$quality): " +
+                    "${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
+            if (b64.length <= MAX_BASE64_BYTES) {
+                return prefix to b64
+            }
+        }
+        // Даже последняя ступень не влезла (бывает с аномальными источниками) — отказ.
+        return null
+    }
+
+    /**
+     * Uri картинки -> base64 строка с префиксом data:image/webp;base64,...
+     * (data:image/jpeg — только если WebP-энкодер недоступен на устройстве).
      * Возвращает CompressResult: Ok(base64) | TooLarge | Failed.
      * Если после первого прохода base64 больше MAX_BASE64_BYTES — автоматически
      * пережимает с меньшим размером/качеством; при невозможности уложиться — TooLarge.
@@ -90,33 +141,12 @@ object ImageUtils {
             return CompressResult.Failed
         }
 
-        // Ступени сжатия: от штатной к агрессивной. Первая почти всегда достаточна.
-        val ladder = listOf(
-            MAX_DIMENSION to JPEG_QUALITY,          // 1280px q75
-            960 to 65,                              // запасной вариант
-            720 to 55                               // последний шанс
-        )
-
-        for ((dim, quality) in ladder) {
-            val scaled = resizeToMax(bmp, dim)
-            val out = ByteArrayOutputStream(96 * 1024)
-            scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
-            val bytes = out.toByteArray()
-            if (scaled !== bmp) scaled.recycle()
-            if (bytes.isEmpty()) continue
-
-            val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-            Log.d(TAG, "Изображение (${dim}px q$quality): ${bytes.size / 1024} КБ сырых, ${b64.length / 1024} КБ base64")
-            if (b64.length <= MAX_BASE64_BYTES) {
-                return CompressResult.Ok(BASE64_PREFIX + b64)
-            }
-        }
-        // Даже последняя ступень не влезла (бывает с аномальными источниками) — отказ.
-        return CompressResult.TooLarge(0)
+        val encoded = encodeWithLadder(bmp) ?: return CompressResult.TooLarge(0)
+        return CompressResult.Ok(encoded.first + encoded.second)
     }
 
     /**
-     * Uri картинки -> base64 строка с префиксом data:image/jpeg;base64,...
+     * Uri картинки -> base64 строка с data-URI префиксом (webp; jpeg — fallback).
      * @return null если файл не читается, пустой результат или не влезает в лимит 10 МБ.
      */
     fun compressToBase64(context: Context, uri: Uri): String? {
@@ -130,10 +160,16 @@ object ImageUtils {
         }
     }
 
-    /** Обратное преобразование: base64 (с префиксом или без) -> Bitmap. */
+    /**
+     * Обратное преобразование: base64 data-URI (webp/jpeg, с префиксом или без) -> Bitmap.
+     * Формат определяется по сигнатуре байт (BitmapFactory), поэтому старые JPEG-сообщения
+     * и новые WebP декодируются одним путём. Префикс снимаем для любого image/* типа.
+     */
     fun base64ToBitmap(data: String): Bitmap? {
         return try {
-            val raw = if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length) else data
+            val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data)
+                      else if (data.startsWith(BASE64_PREFIX)) data.substring(BASE64_PREFIX.length)
+                      else data
             val bytes = Base64.decode(raw, Base64.DEFAULT)
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         } catch (e: Exception) {
@@ -142,7 +178,7 @@ object ImageUtils {
         }
     }
 
-    /** Признак того, что текст сообщения — это base64-картинка. */
+    /** Признак того, что текст сообщения — это base64-картинка (webp или legacy jpeg). */
     fun isImagePayload(text: String?): Boolean =
-        text != null && text.startsWith(BASE64_PREFIX)
+        text != null && text.startsWith("data:image")
 }

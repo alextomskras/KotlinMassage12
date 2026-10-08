@@ -13,7 +13,9 @@ import java.io.FileOutputStream
  *
  * Картинка в RTDB живёт только 7 дней (relay-зона /transfers), поэтому скачанное
  * сохраняем на телефоне: история чата переживает очистку трансфера.
- * Файлы лежат в cacheDir/chat_images/<msgId>.jpg, итоговый размер <= ~500 КБ
+ * Файлы лежат в cacheDir/chat_images/<msgId>.img — расширение нейтральное, т.к.
+ * внутри может быть WebP (новый формат) или JPEG (старые сообщения/fallback);
+ * BitmapFactory определяет формат по сигнатуре байт. Итоговый размер <= ~500 КБ
  * (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
  */
 object ImageCache {
@@ -23,7 +25,7 @@ object ImageCache {
     private const val MAX_ENTRIES = 300
 
     fun file(context: Context, msgId: String): File =
-        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".jpg")
+        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".img")
 
     fun has(context: Context, msgId: String): Boolean = file(context, msgId).exists()
 
