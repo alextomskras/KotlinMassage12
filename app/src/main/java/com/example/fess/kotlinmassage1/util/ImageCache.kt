@@ -2,7 +2,6 @@ package com.example.fess.kotlinmassage1.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import java.io.File
@@ -62,12 +61,12 @@ object ImageCache {
         }
     }
 
-    /** Чтение из кэша -> Bitmap (или null, если нет/битый). */
-    fun getBitmap(context: Context, msgId: String): Bitmap? {
+    /** Чтение из кэша -> Bitmap (или null, если нет/битый). maxSide > 0 — downsample для миниатюр. */
+    fun getBitmap(context: Context, msgId: String, maxSide: Int = 0): Bitmap? {
         val f = file(context, msgId)
         if (!f.exists()) return null
         return try {
-            BitmapFactory.decodeFile(f.absolutePath)
+            ImageUtils.decodeFile(f, maxSide)
         } catch (e: Exception) {
             Log.w(TAG, "getBitmap failed for $msgId: ${e.message}")
             null

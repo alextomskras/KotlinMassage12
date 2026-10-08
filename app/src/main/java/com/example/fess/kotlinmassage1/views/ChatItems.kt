@@ -75,8 +75,14 @@ class KartinkaFromItem(
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
                 ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
-            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image)
+            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
+        }
+
+        // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
+        image.setOnClickListener {
+            val c = ctx ?: image.context
+            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text).show()
         }
 
         ImageLoader.loadAvatarInto(
@@ -107,8 +113,14 @@ class KartinkaToItem(
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
                 ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
-            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image)
+            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
+        }
+
+        // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
+        image.setOnClickListener {
+            val c = ctx ?: image.context
+            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text).show()
         }
 
         ImageLoader.loadAvatarInto(

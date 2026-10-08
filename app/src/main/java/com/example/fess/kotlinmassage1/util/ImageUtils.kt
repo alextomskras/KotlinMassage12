@@ -173,16 +173,46 @@ object ImageUtils {
     /**
      * Обратное преобразование: base64 data-URI (webp/jpeg, с префиксом или без) -> Bitmap.
      * Формат определяется по сигнатуре байт (BitmapFactory), поэтому старые JPEG-сообщения
-     * и новые WebP декодируются одним путём. Любой data-URI префикс снимаем подстрокой
-     * после "base64,".
+     * и новые WebP декодируются одним путём. reqMaxSide > 0 — декод с понижением
+     * (inSampleSize), для миниатюр в пузыре чата.
      */
-    fun base64ToBitmap(data: String): Bitmap? {
+    fun base64ToBitmap(data: String, reqMaxSide: Int = 0): Bitmap? {
         return try {
             val raw = if (data.startsWith("data:image")) data.substringAfter("base64,", data) else data
             val bytes = Base64.decode(raw, Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (reqMaxSide <= 0) {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            } else {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                while (bounds.outWidth / sample >= reqMaxSide * 2 || bounds.outHeight / sample >= reqMaxSide * 2) {
+                    sample *= 2
+                }
+                BitmapFactory.decodeByteArray(
+                    bytes, 0, bytes.size,
+                    BitmapFactory.Options().apply { inSampleSize = sample }
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Не удалось раскодировать base64: ${e.message}")
+            null
+        }
+    }
+
+    /** Декод файла кэша; maxSide > 0 — inSampleSize (не грузим полный размер в миниатю). */
+    fun decodeFile(file: java.io.File, maxSide: Int = 0): Bitmap? {
+        return try {
+            if (maxSide <= 0) return BitmapFactory.decodeFile(file.absolutePath)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            var sample = 1
+            while (bounds.outWidth / sample >= maxSide * 2 || bounds.outHeight / sample >= maxSide * 2) {
+                sample *= 2
+            }
+            BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+        } catch (e: Exception) {
+            Log.e(TAG, "decodeFile failed: ${e.message}")
             null
         }
     }

@@ -37,15 +37,68 @@ object ImageLoader {
      * Защита от переиспользования ViewHolder: если к моменту готовности вьюха уже
      * привязана к другому тексту — результат игнорируется.
      */
-    fun loadBase64ToView(data: String, target: android.widget.ImageView) {
+    /** base64-payload -> Bitmap в фоновом потоке; результат применяется к ImageView в main. */
+    fun loadBase64ToView(data: String, target: android.widget.ImageView, maxSide: Int = 0) {
         target.setTag(TAG_KEY, data)
         executor.execute {
-            val bmp = ImageUtils.base64ToBitmap(data)
+            val bmp = ImageUtils.base64ToBitmap(data, maxSide)
             target.post {
                 if (target.getTag(TAG_KEY) == data && bmp != null) {
                     target.setImageBitmap(bmp)
                 }
             }
+        }
+    }
+
+    /** Полноразмерный bitmap из payload/кэша — для полноэкранного просмотра. Колбэк в main. */
+    fun loadFullBitmap(context: Context, transferRef: String?, payload: String?, callback: (Bitmap?) -> Unit) {
+        executor.execute {
+            // 1) локальный кэш без понижения — мгновенно и в полном размере
+            if (!transferRef.isNullOrEmpty()) {
+                val cached = ImageCache.getBitmap(context.applicationContext, transferRef)
+                if (cached != null) {
+                    main.post { callback(cached) }
+                    return@execute
+                }
+            }
+            // 2) полный base64 из сообщения / relay-зоны
+            val data = when {
+                payload != null && ImageUtils.isImagePayload(payload) -> payload
+                !transferRef.isNullOrEmpty() -> null // пойдёт асинхронное чтение RTDB ниже
+                else -> payload // legacy URL -> Picasso
+            }
+            if (data != null && ImageUtils.isImagePayload(data)) {
+                val bmp = ImageUtils.base64ToBitmap(data)
+                main.post { callback(bmp) }
+                return@execute
+            }
+            if (!transferRef.isNullOrEmpty()) {
+                FirebaseDatabase.getInstance().getReference(DbPaths.transfer(transferRef))
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            val d = snapshot.child("data").getValue(String::class.java)
+                            val bmp = if (!d.isNullOrEmpty()) ImageUtils.base64ToBitmap(d) else null
+                            if (!d.isNullOrEmpty()) ImageCache.putFromBase64(context.applicationContext, transferRef, d)
+                            main.post { callback(bmp) }
+                        }
+
+                        override fun onCancelled(error: DatabaseError) {
+                            main.post { callback(null) }
+                        }
+                    })
+                return@execute
+            }
+            if (!payload.isNullOrEmpty()) {
+                // legacy firebasestorage URL
+                try {
+                    val bmp = com.squareup.picasso.Picasso.get().load(payload).get()
+                    main.post { callback(bmp) }
+                } catch (e: Exception) {
+                    main.post { callback(null) }
+                }
+                return@execute
+            }
+            main.post { callback(null) }
         }
     }
 
