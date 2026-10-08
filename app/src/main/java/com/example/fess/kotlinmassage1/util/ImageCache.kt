@@ -13,17 +13,25 @@ import java.io.FileOutputStream
  *
  * Картинка в RTDB живёт только 7 дней (relay-зона /transfers), поэтому скачанное
  * сохраняем на телефоне: история чата переживает очистку трансфера.
- * Файлы лежат в cacheDir/chat_images/<msgId>.jpg, итоговый размер <= ~500 КБ
- * (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
+ * Файлы лежат в cacheDir/chat_images/<msgId>.webp (legacy-файлы .jpg читаются как
+ * есть — BitmapFactory определяет формат по содержимому), итоговый размер
+ * <= ~500 КБ (см. ImageUtils.ladder), лимит кэша — MAX_ENTRIES записей (LRU по mtime).
  */
 object ImageCache {
 
     private const val TAG = "ImageCache"
     private const val DIR_NAME = "chat_images"
+    private const val EXT = ".webp"
+    private const val LEGACY_EXT = ".jpg"
     private const val MAX_ENTRIES = 300
 
-    fun file(context: Context, msgId: String): File =
-        File(context.cacheDir.resolve(DIR_NAME), sanitize(msgId) + ".jpg")
+    fun file(context: Context, msgId: String): File {
+        val dir = context.cacheDir.resolve(DIR_NAME)
+        val webp = File(dir, sanitize(msgId) + EXT)
+        val legacy = File(dir, sanitize(msgId) + LEGACY_EXT)
+        // новый формат приоритетен; legacy .jpg возвращаем как есть (декодер сам разберётся)
+        return if (!webp.exists() && legacy.exists()) legacy else webp
+    }
 
     fun has(context: Context, msgId: String): Boolean = file(context, msgId).exists()
 
