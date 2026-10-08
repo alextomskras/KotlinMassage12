@@ -53,6 +53,8 @@ class LatestMessagesActivity : AppCompatActivity() {
 
         val recycler = findViewById<RecyclerView>(R.id.recyclerview_latest_messages)
         recycler.adapter = adapter
+        // строкам нужен контекст для локального кэша картинок (ImageCache)
+        adapter.rowContextProvider = { this }
         recycler.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
 
         // Раньше здесь был жёсткий cast `item as LatestKartinkaMessageRow` — краш, когда

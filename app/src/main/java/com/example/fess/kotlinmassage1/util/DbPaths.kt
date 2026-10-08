@@ -14,6 +14,16 @@ object DbPaths {
     /** Очередь задач на push для бэкенд-релея (клиент пишет, релей читает/удаляет). */
     const val OUTBOX = "outbox"
 
+    /**
+     * Relay-зона картинок: тело base64 живёт здесь РОВНО 7 дней (expiresAt),
+     * получатели скачивают в локальный кэш и пишут ACK deliveredTo/<uid>.
+     * Бэкенд-воркер чистит data по TTL или когда все скачали. В самих сообщениях
+     * остаётся только ссылка transferRef — дубликование base64 в RTDB запрещено.
+     */
+    const val TRANSFERS = "transfers"
+
+    fun transfer(msgId: String) = "$TRANSFERS/$msgId"
+
     fun user(uid: String) = "$USERS/$uid"
 
     fun conversation(fromId: String, toId: String) = "$USER_MESSAGES/$fromId/$toId"

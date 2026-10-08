@@ -17,7 +17,13 @@ class ChatMessage(
     val toId: String = "",
     val timestamp: Long = -1,
     /** Явный тип сообщения ("text"/"image"). Пишется новой версией клиента. */
-    val msgType: String = TYPE_TEXT
+    val msgType: String = TYPE_TEXT,
+    /**
+     * Для картинок нового формата: ключ relay-зоны /transfers/<transferRef>,
+     * где лежит base64-тело (живёт 7 дней). В самом сообщении тела нет —
+     * это убирает дубли base64 в RTDB.
+     */
+    val transferRef: String? = null
 ) {
     companion object {
         const val TYPE_TEXT = "text"
@@ -31,6 +37,7 @@ class ChatMessage(
     val type: String
         get() = when {
             msgType == TYPE_IMAGE -> TYPE_IMAGE
+            !transferRef.isNullOrEmpty() -> TYPE_IMAGE // новый relay-формат
             text.startsWith("data:image") -> TYPE_IMAGE
             text.startsWith("https://firebasestorage") -> TYPE_IMAGE // legacy Storage-URL
             else -> TYPE_TEXT

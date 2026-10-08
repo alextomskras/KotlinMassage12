@@ -17,6 +17,7 @@ import com.example.fess.kotlinmassage1.util.ImageUtils
 class ChatFromItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
 
     override fun layoutRes(): Int = R.layout.chat_from_row
 
@@ -33,6 +34,7 @@ class ChatFromItem(val text: String, val user: User, val time: String) : ChatRow
 class ChatToItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
 
     override fun layoutRes(): Int = R.layout.chat_to_row
 
@@ -46,10 +48,22 @@ class ChatToItem(val text: String, val user: User, val time: String) : ChatRowDe
     }
 }
 
-/** Картинка от нас: base64 из БД декодится в фоне; legacy Storage-URL — Picasso. */
-class KartinkaFromItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
+/**
+ * Картинка от нас. Три формата (обратная совместимость):
+ *  - transferRef -> relay-зона /transfers/<id> (base64 живёт 7 дней, затем локальный кэш);
+ *  - base64 data-URI в text -> legacy «тело в сообщении»;
+ *  - URL firebasestorage -> самый старый формат, Picasso.
+ */
+class KartinkaFromItem(
+    val text: String,
+    val user: User,
+    val time: String,
+    val msgId: String = "",
+    val transferRef: String? = null
+) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
 
     override fun layoutRes(): Int = R.layout.kartinka_from_row
 
@@ -57,11 +71,12 @@ class KartinkaFromItem(val text: String, val user: User, val time: String) : Cha
         viewHolder.itemView.findViewById<TextView>(R.id.textView_message_time).text = time
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_from_row2)
-        if (ImageUtils.isImagePayload(text)) {
-            ImageLoader.loadBase64ToView(text, image)
-        } else {
-            // старые сообщения — URL из Firebase Storage
-            com.squareup.picasso.Picasso.get().load(text).into(image)
+        val ctx = rowContext
+        when {
+            !transferRef.isNullOrEmpty() && ctx != null ->
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
+            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image)
+            else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
 
         ImageLoader.loadAvatarInto(
@@ -71,9 +86,16 @@ class KartinkaFromItem(val text: String, val user: User, val time: String) : Cha
     }
 }
 
-class KartinkaToItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
+class KartinkaToItem(
+    val text: String,
+    val user: User,
+    val time: String,
+    val msgId: String = "",
+    val transferRef: String? = null
+) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
 
     override fun layoutRes(): Int = R.layout.kartinka_to_row
 
@@ -81,10 +103,12 @@ class KartinkaToItem(val text: String, val user: User, val time: String) : ChatR
         viewHolder.itemView.findViewById<TextView>(R.id.textView_to_message_time).text = time
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_to_row2)
-        if (ImageUtils.isImagePayload(text)) {
-            ImageLoader.loadBase64ToView(text, image)
-        } else {
-            com.squareup.picasso.Picasso.get().load(text).into(image)
+        val ctx = rowContext
+        when {
+            !transferRef.isNullOrEmpty() && ctx != null ->
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
+            ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image)
+            else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
 
         ImageLoader.loadAvatarInto(

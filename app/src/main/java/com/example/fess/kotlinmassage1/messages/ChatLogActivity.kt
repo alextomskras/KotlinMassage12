@@ -38,6 +38,8 @@ class ChatLogActivity : AppCompatActivity() {
     companion object {
         const val TAG = "ChatLog"
         private const val REQUEST_PICK_IMAGE = 0
+        /** TTL relay-зоны картинок: 7 дней (согласовано с backend/app/transfer_cleanup.py). */
+        const val TRANSFER_TTL_SEC = 7L * 24 * 3600
         /** Формат времени сообщений; единый для всего экрана. */
         private val TIME_FORMAT = SimpleDateFormat("dd-MM-yyyy HH:mm:ss", Locale.getDefault())
     }
@@ -54,6 +56,8 @@ class ChatLogActivity : AppCompatActivity() {
         NotificationHelper.ensureChannel(this)
 
         findViewById<RecyclerView>(R.id.recyclerview_chat_log).adapter = this.adapter
+        // строкам нужен контекст для локального кэша картинок (ImageCache)
+        adapter.rowContextProvider = { this }
 
         // ЭКРАНАЦИЯ PUSH-ТАПА: раньше ChatLog открывался с произвольным fromId из
         // Intent без проверки сессии. Теперь без авторизации экран не работает.
@@ -207,14 +211,36 @@ class ChatLogActivity : AppCompatActivity() {
             return
         }
 
-        val chatMessage = ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType)
-        // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
-        val outboxKey = chatMessage.id
-
         // preview для пуша: base64 туда НЕ кладём (лимит payload 4 КБ)
         val preview = if (msgType == ChatMessage.TYPE_IMAGE) "📷 Картинка" else text.take(120)
 
         val updates = HashMap<String, Any>()
+
+        // --- Новый relay-формат для картинок: тело base64 живёт ОДИН раз в
+        // /transfers/<id> (7 дней), в сообщениях только transferRef + превью.
+        // Это убирает дубли base64 (раньше одна картинка лежала 4 раза: два
+        // зеркала чата + latest-messages x2).
+        val chatMessage = if (msgType == ChatMessage.TYPE_IMAGE) {
+            val id = messageRef.key!!
+            updates["/${DbPaths.transfer(id)}"] = mapOf(
+                "fromId" to fromId,
+                "toIds" to listOf(toId),
+                "type" to "image",
+                "mime" to "image/jpeg",
+                "sizeBytes" to text.length,
+                "createdAt" to nowSec,
+                "expiresAt" to nowSec + TRANSFER_TTL_SEC,
+                "data" to text,
+                "deliveredTo" to mapOf(fromId to nowSec) // отправитель «уже имеет»
+            )
+            ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id)
+        } else {
+            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType)
+        }
+
+        // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
+        val outboxKey = chatMessage.id
+
         updates["/${DbPaths.conversation(fromId, toId)}/${messageRef.key}"] = chatMessage
         updates["/${DbPaths.conversation(toId, fromId)}/$mirrorKey"] = chatMessage
         updates["/${DbPaths.latestConversation(fromId, toId)}"] = chatMessage
@@ -238,6 +264,11 @@ class ChatLogActivity : AppCompatActivity() {
         db.updateChildren(updates)
             .addOnSuccessListener {
                 Log.d(TAG, "Saved chat message: ${chatMessage.id}")
+                // Свою картинку сразу кладём в локальный кэш: после очистки
+                // трансфера история чата у отправителя останется полной.
+                if (msgType == ChatMessage.TYPE_IMAGE) {
+                    ImageCache.putFromBase64(this, chatMessage.id, text)
+                }
                 findViewById<EditText>(R.id.edittext_chat_log).text.clear()
                 scrollToBottom()
             }

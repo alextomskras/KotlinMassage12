@@ -23,15 +23,21 @@ class ChatRecyclerAdapter(
 
     var onItemClickListener: ((ChatRowDelegate) -> Unit)? = null
 
+    /** Источник контекста активити для строк (нужен локальному кэшу картинок). */
+    var rowContextProvider: (() -> android.content.Context?)? = null
+
+    fun append(item: ChatRowDelegate) {
+        item.rowContext = rowContextProvider?.invoke()
+        items.add(item)
+        notifyItemInserted(items.size - 1)
+    }
+
     fun submit(newItems: List<ChatRowDelegate>) {
+        val ctx = rowContextProvider?.invoke()
+        newItems.forEach { it.rowContext = ctx }
         items.clear()
         items.addAll(newItems)
         notifyDataSetChanged()
-    }
-
-    fun append(item: ChatRowDelegate) {
-        items.add(item)
-        notifyItemInserted(items.size - 1)
     }
 
     override fun getItemCount(): Int = items.size
@@ -65,14 +71,17 @@ interface ChatRowDelegate {
     fun bindTo(holder: RecyclerView.ViewHolder, position: Int)
     /** Собеседник по клику (для списка диалогов). */
     val chatPartnerUser: User?
+
+    /** Контекст для локального кэша картинок (передаёт активити; null = без кэша). */
+    var rowContext: android.content.Context?
 }
 
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */
 fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeStr: String): ChatRowDelegate = when {
     chatMessage.type == ChatMessage.TYPE_IMAGE && isIncoming ->
-        KartinkaToItem(chatMessage.text, user, timeStr)
+        KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef)
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
-        KartinkaFromItem(chatMessage.text, user, timeStr)
+        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef)
     isIncoming -> ChatToItem(chatMessage.text, user, timeStr)
     else -> ChatFromItem(chatMessage.text, user, timeStr)
 }

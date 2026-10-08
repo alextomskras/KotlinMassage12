@@ -1,6 +1,7 @@
 package com.example.fess.kotlinmassage1.util
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -61,6 +62,59 @@ object ImageLoader {
         executor.execute {
             val result = ImageUtils.compressToResult(context.applicationContext, uri)
             main.post { callback(result) }
+        }
+    }
+
+    /**
+     * Картинка-трансфер (новый relay-формат): /transfers/<msgId>.data живёт 7 дней.
+     * Порядок: локальный кэш (мгновенно, переживает очистку трансфера) -> чтение
+     * из RTDB + сохранение в кэш + ACK deliveredTo/<myUid> (сигнал для чистильщика
+     * «все скачали»). Если тела уже нет и в кэша тоже — callback(null) = заглушка.
+     * Колбэк всегда в main-потоке.
+     */
+    fun loadTransferToView(context: Context, msgId: String, myUid: String?, target: android.widget.ImageView) {
+        target.setTag(TAG_KEY, msgId)
+        executor.execute {
+            // 1) локальный кэш
+            val cached = ImageCache.getBitmap(context.applicationContext, msgId)
+            if (cached != null) {
+                main.post {
+                    if (target.getTag(TAG_KEY) == msgId) target.setImageBitmap(cached)
+                }
+                return@execute
+            }
+            // 2) relay-зона в RTDB
+            FirebaseDatabase.getInstance().getReference(DbPaths.transfer(msgId))
+                .addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val data = snapshot.child("data").getValue(String::class.java)
+                        if (data.isNullOrEmpty()) {
+                            main.post {
+                                if (target.getTag(TAG_KEY) == msgId)
+                                    target.setImageResource(R.drawable.ic_launcher_foreground) // заглушка: удалено/истекло
+                            }
+                            return
+                        }
+                        val bmp = ImageUtils.base64ToBitmap(data)
+                        // сохраняем в кэш и ставим ACK доставки
+                        ImageCache.putFromBase64(context.applicationContext, msgId, data)
+                        if (!myUid.isNullOrEmpty()) {
+                            try {
+                                FirebaseDatabase.getInstance()
+                                    .getReference(DbPaths.transfer(msgId))
+                                    .child("deliveredTo").child(myUid)
+                                    .setValue(System.currentTimeMillis() / 1000)
+                            } catch (_: Exception) { /* правила могут запретить — не критично */ }
+                        }
+                        main.post {
+                            if (bmp != null && target.getTag(TAG_KEY) == msgId) target.setImageBitmap(bmp)
+                        }
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        android.util.Log.w("ImageLoader", "transfer $msgId read failed: ${error.message}")
+                    }
+                })
         }
     }
 

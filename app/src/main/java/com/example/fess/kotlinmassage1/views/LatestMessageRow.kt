@@ -34,12 +34,15 @@ class LatestMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, DialogIt
     override var chatPartnerUser: User? = null
         private set
 
+    override var rowContext: android.content.Context? = null
+
     override fun layoutRes(): Int = R.layout.latest_message_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
 
-        // base64-картинку в список диалогов не показываем — только метку
-        val preview = if (ImageUtils.isImagePayload(chatMessage.text)) "📷 Картинка"
+        // картинку (relay-трансфер или legacy base64) в список диалогов не
+        // показываем куском кода — только метку
+        val preview = if (chatMessage.type == ChatMessage.TYPE_IMAGE) "📷 Картинка"
                       else chatMessage.text.take(120)
         viewHolder.itemView.findViewById<TextView>(R.id.text_textview_latest_message).text = preview
 
@@ -67,6 +70,8 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, 
     override var chatPartnerUser: User? = null
         private set
 
+    override var rowContext: android.content.Context? = null
+
     override fun layoutRes(): Int = R.layout.latest_image_message_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
@@ -81,11 +86,16 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, 
 
         if (isImage) {
             previewText.text = "📷 Картинка"
-            if (ImageUtils.isImagePayload(chatMessage.text)) {
-                ImageLoader.loadBase64ToView(chatMessage.text, image)
-            } else {
-                // обратная совместимость со старыми URL из Firebase Storage
-                Picasso.get().load(chatMessage.text).into(image)
+            val ctx = rowContext
+            val ref = chatMessage.transferRef
+            when {
+                !ref.isNullOrEmpty() && ctx != null ->
+                    ImageLoader.loadTransferToView(ctx, ref, FirebaseAuth.getInstance().uid, image)
+                ImageUtils.isImagePayload(chatMessage.text) ->
+                    ImageLoader.loadBase64ToView(chatMessage.text, image)
+                else ->
+                    // обратная совместимость со старыми URL из Firebase Storage
+                    Picasso.get().load(chatMessage.text).into(image)
             }
         } else {
             previewText.text = chatMessage.text.take(80)
