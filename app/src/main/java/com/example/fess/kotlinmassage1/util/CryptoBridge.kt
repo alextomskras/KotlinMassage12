@@ -65,12 +65,14 @@ object CryptoBridge {
      * Расшифровывает msg.text, если msg.enc==true. Возвращает plain text или null
      * (нет ключей / чужой конверт / битый base64) — вызывающий решает заглушку.
      */
-    fun decryptText(msgId: String, envelopeB64: String): String? = try {
+    fun decryptText(msgId: String, envelopeB64: String): String? {
+        return try {
         val env = jsonToEnvelope(envelopeB64) ?: return null
         CryptoBox.decryptText(env, msgId)
     } catch (e: Exception) {
         Log.w(TAG, "decryptText($msgId) failed: ${e.message}")
         null
+    }
     }
 
     // -------------------------------------------------------------- картинки
@@ -89,7 +91,8 @@ object CryptoBridge {
         fromId: String,
         nowSec: Long,
         ttlSec: Long
-    ): Map<String, Any>? = try {
+    ): Map<String, Any>? {
+        return try {
         val pub = pubKeyCache[toUid] ?: return null
         val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
         val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
@@ -109,6 +112,7 @@ object CryptoBridge {
     } catch (e: Exception) {
         Log.e(TAG, "buildEncryptedTransferNode failed", e)
         null
+    }
     }
 
     /**
