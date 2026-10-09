@@ -66,10 +66,25 @@ object CryptoBridge {
         )
     }
 
-    /** Selfless-зеркало текста для отправителя (msgId -> base64 JSON-конверта). */
+    /**
+     * Selfless-зеркало текста для отправителя (msgId -> base64 JSON-конверта).
+     * Убирается только после успешной ЗАПИСИ сообщения в БД (confirmTextMirror):
+     * если достать его сразу перед записью и запись затем не состоится
+     * (offline-очередь Firebase, сбой сети), зеркало теряется навсегда и
+     * отправитель видит у своего же сообщения заглушку «Нет доступа».
+     */
     private val pendingTextMirrors = HashMap<String, String>()
 
+    /** Одноразовое извлечение зеркала (картинки: env уже передаётся напрямую). */
     fun takeTextMirror(msgId: String): String? = pendingTextMirrors.remove(msgId)
+
+    /** Неудаляющее чтение зеркала — для записи в БД (см. confirmTextMirror). */
+    fun peekTextMirror(msgId: String): String? = pendingTextMirrors[msgId]
+
+    /** Зеркало остаётся в кэше; вызывается при onDisconnect(keepInSync=false) после записи. */
+    fun confirmTextMirror(msgId: String) {
+        pendingTextMirrors.remove(msgId)
+    }
 
     /**
      * Расшифровывает msg.text, если msg.enc==true. Возвращает plain text или null

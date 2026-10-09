@@ -305,7 +305,10 @@ class ChatLogActivity : AppCompatActivity() {
             }
             ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id, env = imageEnv)
         } else {
-            val textMirror = if (encrypted) forcedId?.let { CryptoBridge.takeTextMirror(it) } else null
+            // Зеркало НЕ удаляем из кэша при чтении: если updateChildren не
+            // подтвердится сервером (offline-очередь), оно останется и повторная
+            // запись его возьмёт. Чистим через confirmTextMirror в onDisconnect.
+            val textMirror = if (encrypted) forcedId?.let { com.example.fess.kotlinmassage1.util.CryptoBridge.peekTextMirror(it) } else null
             ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted, env = textMirror)
         }
 
@@ -335,6 +338,11 @@ class ChatLogActivity : AppCompatActivity() {
         db.updateChildren(updates)
             .addOnSuccessListener {
                 Log.d(TAG, "Saved chat message: ${chatMessage.id}")
+                // Сервер принял запись — selfless-зеркало текста больше не нужно
+                // держать в памяти процесса (см. peekTextMirror).
+                if (msgType == ChatMessage.TYPE_TEXT && encrypted) {
+                    forcedId?.let { CryptoBridge.confirmTextMirror(it) }
+                }
                 // Свою картинку сразу кладём в локальный кэш: после очистки
                 // трансфера история чата у отправителя останется полной.
                 if (msgType == ChatMessage.TYPE_IMAGE) {
