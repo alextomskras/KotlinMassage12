@@ -57,7 +57,7 @@ object ImageLoader {
     }
 
     /** Полноразмерный bitmap из payload/кэша — для полноэкранного просмотра. Колбэк в main. */
-    fun loadFullBitmap(context: Context, transferRef: String?, payload: String?, envJson: String? = null, callback: (Bitmap?) -> Unit) {
+    fun loadFullBitmap(context: Context, transferRef: String?, payload: String?, envJson: String? = null, isOutgoing: Boolean = false, callback: (Bitmap?) -> Unit) {
         executor.execute {
             // 1) локальный кэш без понижения — мгновенно и в полном размере
             if (!transferRef.isNullOrEmpty()) {
@@ -67,10 +67,11 @@ object ImageLoader {
                     return@execute
                 }
             }
-            // 1b) E2EE-картинка: конверт в зеркале диалога (msg.env). Работает
-            // и после удаления relay-ноды по TTL 7 дней; греет кэш.
+            // 1b) E2EE-картинка: конверт в зеркале диалога (msg.env). Для
+            // исходящего env — sender-конверт (ownEpk=true). Работает и после
+            // удаления relay-ноды по TTL 7 дней; греет кэш.
             if (!transferRef.isNullOrEmpty() && envJson != null && envJson.contains("\"epk\"")) {
-                val d = CryptoBridge.decryptImageFromMessage(context.applicationContext, transferRef, envJson)
+                val d = CryptoBridge.decryptImageFromMessage(context.applicationContext, transferRef, envJson, ownEpk = isOutgoing)
                 if (d != null) {
                     val bmp = ImageUtils.base64ToBitmap(d)
                     main.post { callback(bmp) }
@@ -149,7 +150,8 @@ object ImageLoader {
         target: android.widget.ImageView,
         maxSide: Int = 0,
         payload: String? = null,
-        envJson: String? = null
+        envJson: String? = null,
+        isOutgoing: Boolean = false
     ) {
         // сбрасываем вьюху на нейтральный placeholder: без этого при переиспользовании
         // ViewHolder показывается bitmap/заставка от предыдущей строки списка
@@ -182,10 +184,11 @@ object ImageLoader {
                 return@execute
             }
             // 1c) E2EE-картинка: конверт лежит в зеркале диалога (msg.env).
-            // Дешифруем своим приватником и греем кэш — работает даже когда
-            // relay-нода /transfers уже удалена по TTL 7 дней.
+            // Для ИСХОДЯЩЕГО сообщения env — sender-конверт (epk = наш pubkey),
+            // читаем его decryptSender(); для входящего — обычный путь.
+            // Работает даже когда relay-нода /transfers уже удалена по TTL 7 дней.
             if (envJson != null && envJson.contains("\"epk\"")) {
-                val data = CryptoBridge.decryptImageFromMessage(context.applicationContext, msgId, envJson)
+                val data = CryptoBridge.decryptImageFromMessage(context.applicationContext, msgId, envJson, ownEpk = isOutgoing)
                 if (data != null) {
                     val bmpEnv = ImageUtils.base64ToBitmap(data, maxSide)
                     main.post {
@@ -198,13 +201,19 @@ object ImageLoader {
             FirebaseDatabase.getInstance().getReference(DbPaths.transfer(msgId))
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        // E2EE v1: нода может быть конвертом enc/epk — readTransferPayload
-                        // расшифрует нашим приватником; открытая "data" читается как раньше.
-                        var data = CryptoBridge.readTransferPayload(msgId, snapshot)
+                        // E2EE v1: нода может быть конвертом enc/epk. Для
+                        // исходящего сообщения epk в ноде = pubkey ПОЛУЧАТЕЛЯ
+                        // (наш приватник к нему не подходит) — сначала пробуем
+                        // sender-конверт из msg.env, затем открытую data.
+                        var data: String? = null
+                        if (isOutgoing && envJson != null && envJson.contains("\"epk\"")) {
+                            data = CryptoBridge.decryptImageFromMessage(context.applicationContext, msgId, envJson, ownEpk = true)
+                        }
+                        if (data.isNullOrEmpty()) data = CryptoBridge.readTransferPayload(msgId, snapshot)
                         // Relay-ноды нет (TTL истёк) или её тело не читается — пробуем
                         // E2EE-конверт из текста сообщения, если он дошёл сюда позже нас.
                         if (data.isNullOrEmpty() && envJson != null) {
-                            data = CryptoBridge.decryptImageFromMessage(context.applicationContext, msgId, envJson)
+                            data = CryptoBridge.decryptImageFromMessage(context.applicationContext, msgId, envJson, ownEpk = isOutgoing)
                         }
                         if (data.isNullOrEmpty()) {
                             main.post {

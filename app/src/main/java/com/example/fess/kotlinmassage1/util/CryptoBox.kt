@@ -67,6 +67,25 @@ object CryptoBox {
     fun decryptText(encl: Envelope, msgId: String): String =
         String(decrypt(encl, msgId, image = false), Charsets.UTF_8)
 
+    /**
+     * Дешифровка конверта СТОРОНОЙ ОТПРАВИТЕЛЯ (для картинок). Ключевой момент:
+     * в prepareImageEnvelope epk конверта — это НЕ эфемерида, а static pubkey
+     * самого отправителя (KeyManager.getPublicKey()), поэтому shared secret
+     * восстанавливается его же приватником: ECDH(priv_sender, epk=pub_sender).
+     * Именно так отправитель видит свою картинку без хранения открытого
+     * оригинала где-либо ещё. Бросает исключение при несовпадении ключей
+     * (перелогин/смена пары) — вызывающий решает про заглушку.
+     */
+    fun decryptSender(encl: Envelope, msgId: String, image: Boolean): ByteArray {
+        val epkBytes = KeyManager.decodeBase64(encl.epkB64)
+            ?: throw IllegalArgumentException("bad epk base64")
+        val cipherData = KeyManager.decodeBase64(encl.encB64)
+            ?: throw IllegalArgumentException("bad enc base64")
+        val shared = KeyManager.sharedSecret(KeyManager.getPrivateKey(), X25519PublicKeyParameters(epkBytes, 0))
+        val (key, iv) = hkdf(shared, msgId, if (image) HKDF_INFO_IMG else HKDF_INFO_TEXT)
+        return aesGcm(Cipher.DECRYPT_MODE, key, iv, cipherData)
+    }
+
     // ------------------------------------------------------------- internals
 
     /**

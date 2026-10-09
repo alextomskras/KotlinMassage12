@@ -24,7 +24,8 @@ class FullscreenImageDialog(
     private val transferRef: String?,
     private val payload: String?,
     private val caption: String? = null,
-    private val envJson: String? = null
+    private val envJson: String? = null,
+    private val isOutgoing: Boolean = false
 ) : Dialog(context, R.style.Theme_FullscreenImage) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,7 +46,7 @@ class FullscreenImageDialog(
         // GestureDetector ждёт подтверждения, что это не даблтап.
         image.onSingleTapListener = { dismiss() }
 
-        ImageLoader.loadFullBitmap(context, transferRef, payload, envJson) { bmp ->
+        ImageLoader.loadFullBitmap(context, transferRef, payload, envJson, isOutgoing) { bmp ->
             if (!isShowing()) return@loadFullBitmap
             when {
                 bmp != null -> image.setImageBitmap(bmp)

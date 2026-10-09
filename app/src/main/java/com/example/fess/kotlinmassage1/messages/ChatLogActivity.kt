@@ -283,9 +283,11 @@ class ChatLogActivity : AppCompatActivity() {
         // enc/epk/alg вместо открытой data); иначе пишем открытую data (fallback).
         val chatMessage = if (msgType == ChatMessage.TYPE_IMAGE) {
             val id = messageRef.key!!
-            // Конверт уже готов (сообщение шифровалось ДО записи). Relay-нода
-            // собирается из него же — без второго шифрования и без гонки ключей.
-            val encNode = CryptoBridge.buildTransferNodeFromEnv(imageEnv, id, text, fromId, toId, nowSec, TRANSFER_TTL_SEC)
+            // Relay-нода собирается из receiver-конверта (шифр под pubkey
+            // получателя), подготовленного при отправке. В msg.env лежит
+            // sender-конверт — по нему отправитель читает свою картинку.
+            val receiverEnv = imageEnv?.let { CryptoBridge.takeReceiverEnvelope(id) }
+            val encNode = CryptoBridge.buildTransferNodeFromEnv(receiverEnv, id, text, fromId, toId, nowSec, TRANSFER_TTL_SEC)
             if (encNode != null) {
                 updates["/${DbPaths.transfer(id)}"] = encNode
             } else {

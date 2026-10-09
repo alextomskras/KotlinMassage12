@@ -65,7 +65,10 @@ class ChatToItem(
  */
 private fun displayText(text: String, encMsgId: String?): String {
     if (encMsgId == null) return text
-    return com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(encMsgId, text)
+    val myUid = com.google.firebase.auth.FirebaseAuth.getInstance().uid
+    // fromId в чате неизвестен на уровне строки; для текста это не критично —
+    // дешифровка идёт эфемерным путём и работает для обеих сторон диалога.
+    return com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(myUid, null, encMsgId, text)
         ?: "🔒 Нет доступа к сообщению"
 }
 
@@ -127,7 +130,7 @@ class KartinkaFromItem(
         val ctx = rowContext
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
-                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson)
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson, isOutgoing = true)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
@@ -135,7 +138,7 @@ class KartinkaFromItem(
         // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
         image.setOnClickListener {
             val c = ctx ?: image.context
-            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson).show()
+            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson, isOutgoing = true).show()
         }
 
         ImageLoader.loadAvatarInto(

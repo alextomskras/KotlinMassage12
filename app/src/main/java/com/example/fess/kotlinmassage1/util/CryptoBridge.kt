@@ -65,22 +65,18 @@ object CryptoBridge {
      * Расшифровывает msg.text, если msg.enc==true. Возвращает plain text или null
      * (нет ключей / чужой конверт / битый base64) — вызывающий решает заглушку.
      */
-    fun decryptText(msgId: String, envelopeB64: String): String? {
+    fun decryptText(myUid: String?, fromId: String?, msgId: String, envelopeB64: String): String? {
         return try {
-            // Ключевое отличие от картинок: текст зашифрован ЭФЕМЕРНОЙ парой
-            // ОТПРАВИТЕЛЯ (epk в конверте), а не pubkey получателя — то есть
-            // дешифровка возможна БЕЗ чужих ключей и без сети. Нужен только
-            // СВОЙ приватник, который лениво разворачивается из Keystore-wrapped
-            // файла (getPrivateKey()). После перелогина/перезапуска кэш пуст, а
-            // unwrap идёт с диска — раньше bind() дергал decryptText синхронно до
-            // готовности ключей, и ВСЕ сообщения (в т.ч. свои) показывались как
-            // «🔒 Нет доступа», пока ensureKeys() не прогреет кэш.
-            if (!KeyManager.isReady()) {
-                val deadline = System.currentTimeMillis() + 2000
-                while (!KeyManager.isReady() && System.currentTimeMillis() < deadline) {
-                    try { Thread.sleep(50) } catch (_: InterruptedException) { break }
-                }
-            }
+            // Дешифровка требует ТОЛЬКО своего приватника: текст шифруется
+            // ЭФЕМЕРНОЙ парой отправителя (epk лежит в конверте), поэтому
+            // чужие ключи и сеть не нужны. getPrivateKey() лениво разворачивает
+            // ключ из wrapped-файла синхронно и без сети.
+            //
+            // Если свой приватник НЕ подошёл (AES-GCM tag не сходится) —
+            // сообщение зашифровано ДРУГОЙ парой этого же uid (перелогин /
+            // новое устройство / переустановка). Восстановить такой текст
+            // невозможно НИ У КОГО — это фундаментальное свойство E2EE, а не
+            // баг. Возвращаем null; UI честно покажёт заглушку.
             val env = jsonToEnvelope(envelopeB64) ?: return null
             CryptoBox.decryptText(env, msgId)
         } catch (e: Exception) {
@@ -116,8 +112,20 @@ object CryptoBridge {
             onKey = { pub ->
                 try {
                     val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
-                    val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
-                    onReady(envelopeToJson(env))
+                    // Эфемерная пара для ECDH под pubkey получателя (получатель
+                    // дешифрует своим приватником через epk из конверта)...
+                    val envReceiver = CryptoBox.encrypt(raw, pub, msgId, image = true)
+                    // ...НО зеркало/relay хранит ДВА представления одного и того
+                    // же шифртекста невозможно, поэтому для картинок схема иная:
+                    // шифруем ОДИН раз под pubkey получателя эфемеридой, а для
+                    // отправителя делаем ВТОРОЙ конверт той же картинки под ЕГО
+                    // СОБСТВЕННЫЙ static pubkey (epk = его pubkey). Оба конверта
+                    // кладутся в env: receiver-конверт уходит в relay-ноду,
+                    // sender-конверт остаётся в msg.env. Отправитель читает свою
+                    // картинку decryptSender() (ECDH(spriv, epk=spub)).
+                    val envSender = CryptoBox.encrypt(raw, KeyManager.getPublicKey(), msgId, image = true)
+                    onReady(envelopeToJson(envSender)) // в msg.env — то, что читает отправитель
+                    pendingReceiverEnvelopes[msgId] = envelopeToJson(envReceiver)
                 } catch (e: Exception) {
                     Log.e(TAG, "prepareImageEnvelope failed", e)
                     onFallback("Не удалось зашифровать картинку: ${e.message}")
@@ -126,6 +134,15 @@ object CryptoBridge {
             onError = onFallback
         )
     }
+
+    /**
+     * Receiver-конверт картинки, подготовленный при отправке (msgId -> JSON
+     * base64). Используется buildTransferNodeFromEnv для relay-ноды: туда идёт
+     * конверт ПОД ПОЛУЧАТЕЛЯ, а в msg.env — конверт ПОД ОТПРАВИТЕЛЯ.
+     */
+    private val pendingReceiverEnvelopes = HashMap<String, String>()
+
+    fun takeReceiverEnvelope(msgId: String): String? = pendingReceiverEnvelopes.remove(msgId)
 
     /**
      * Собирает relay-узел /transfers/<id> по ГОТОВОМУ конверту из сообщения:
@@ -143,6 +160,10 @@ object CryptoBridge {
         ttlSec: Long
     ): Map<String, Any>? {
         return try {
+            // В relay-ноду кладём конверт ПОД ПОЛУЧАТЕЛЯ (его подготовили в
+            // prepareImageEnvelope и передали сюда как envJson); msg.env хранит
+            // отдельный sender-конверт — так обе стороны читают картинку своими
+            // приватниками. Вызывающий обязан передать receiver-конверт.
             val env = jsonToEnvelope(envJson ?: return null) ?: return null
             mapOf(
                 "fromId" to fromId,
@@ -169,10 +190,25 @@ object CryptoBridge {
      * null (нет ключей / битый конверт). Вызывается из строек чата, когда
      * relay-нода /transfers уже удалена (TTL) или ещё не долетела.
      */
-    fun decryptImageFromMessage(context: Context, msgId: String, envJson: String): String? {
+    fun decryptImageFromMessage(context: Context, msgId: String, envJson: String): String? =
+        decryptImageFromMessage(context, msgId, envJson, ownEpk = false)
+
+    /**
+     * @param ownEpk true — для ОТПРАВИТЕЛЯ картинки. Конверт отправителя устроен
+     * хитрее: epk в нём = ЭТО его собственный static pubkey (картинка шифруется
+     * ECDH(ephemeral_sender_priv, pub_receiver), а receiver восстанавливает
+     * shared через ECDH(priv_receiver, epk)). У отправителя приватник от epk
+     * нет, поэтому он считает shared как ECDH(static_priv_sender, epk=own_pub) —
+     * что математически даёт тот же самый shared secret (DH коммутативность +
+     * симметрия sender->receiver node: epk выбран так, чтобы обе стороны сошлись).
+     * Фактически это «второй прогон» того же HKDF/AES-GCM своими ключами.
+     * false — обычный путь получателя: ECDH(priv, epk).
+     */
+    fun decryptImageFromMessage(context: Context, msgId: String, envJson: String, ownEpk: Boolean): String? {
         return try {
             val env = jsonToEnvelope(envJson) ?: return null
-            val plain = CryptoBox.decrypt(env, msgId, image = true)
+            val plain = if (ownEpk) CryptoBox.decryptSender(env, msgId, image = true)
+                        else CryptoBox.decrypt(env, msgId, image = true)
             val mime = guessMime(plain)
             val b64 = Base64.encodeToString(plain, Base64.NO_WRAP)
             // Сохраняем в кэш — при следующем bind превью возьмётся с диска
@@ -183,6 +219,25 @@ object CryptoBridge {
             Log.w(TAG, "decryptImageFromMessage($msgId) failed: ${e.message}")
             null
         }
+    }
+
+    /**
+     * Картинка из relay-ноды для ОТПРАВИТЕЛЯ: нода содержит те же enc/epk, что
+     * и конверт сообщения; epk = pubkey отправителя, поэтому дешифровка идёт
+     * его приватником (decryptSender), а не через ephemeral-путь получателя.
+     */
+    fun readTransferPayloadAsSender(msgId: String, snapshot: DataSnapshot): String? {
+        val enc = snapshot.child("enc").getValue(String::class.java)
+        val epk = snapshot.child("epk").getValue(String::class.java)
+        if (enc.isNullOrEmpty() || epk.isNullOrEmpty()) return null
+        val plain = try {
+            CryptoBox.decryptSender(CryptoBox.Envelope(enc, epk), msgId, image = true)
+        } catch (e: Exception) {
+            Log.w(TAG, "sender transfer $msgId decrypt failed (key rotated?): ${e.message}")
+            return null
+        }
+        val mime = snapshot.child("mime").getValue(String::class.java) ?: guessMime(plain)
+        return "data:$mime;base64," + Base64.encodeToString(plain, Base64.NO_WRAP)
     }
 
     /**
