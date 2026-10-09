@@ -90,6 +90,13 @@ object KeyManager {
 
     fun getPublicKey(): X25519PublicKeyParameters = publicKeyOf(getPrivateKey())
 
+    /**
+     * True, если приватник уже в памяти (после ensureKeys/getOrCreatePrivateKey).
+     * Используется как неблокирующая проверка перед дешифровкой: вызывающий может
+     * подождать инициализацию вместо гарантированного промаха на холодном старте.
+     */
+    fun isReady(): Boolean = cachedPriv != null
+
     /** base64(NO_WRAP) публичного ключа — то, что лежит в /users/{uid}/publicKey. */
     fun publicKeyBase64(): String = encodeBase64(getPublicKey().getEncoded())
 

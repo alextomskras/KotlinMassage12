@@ -67,6 +67,20 @@ object CryptoBridge {
      */
     fun decryptText(msgId: String, envelopeB64: String): String? {
         return try {
+            // Ключевое отличие от картинок: текст зашифрован ЭФЕМЕРНОЙ парой
+            // ОТПРАВИТЕЛЯ (epk в конверте), а не pubkey получателя — то есть
+            // дешифровка возможна БЕЗ чужих ключей и без сети. Нужен только
+            // СВОЙ приватник, который лениво разворачивается из Keystore-wrapped
+            // файла (getPrivateKey()). После перелогина/перезапуска кэш пуст, а
+            // unwrap идёт с диска — раньше bind() дергал decryptText синхронно до
+            // готовности ключей, и ВСЕ сообщения (в т.ч. свои) показывались как
+            // «🔒 Нет доступа», пока ensureKeys() не прогреет кэш.
+            if (!KeyManager.isReady()) {
+                val deadline = System.currentTimeMillis() + 2000
+                while (!KeyManager.isReady() && System.currentTimeMillis() < deadline) {
+                    try { Thread.sleep(50) } catch (_: InterruptedException) { break }
+                }
+            }
             val env = jsonToEnvelope(envelopeB64) ?: return null
             CryptoBox.decryptText(env, msgId)
         } catch (e: Exception) {
