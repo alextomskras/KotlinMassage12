@@ -82,6 +82,6 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
         KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null))
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
         KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null))
-    isIncoming -> ChatToItem(chatMessage.text, user, timeStr)
-    else -> ChatFromItem(chatMessage.text, user, timeStr)
+    isIncoming -> ChatToItem(chatMessage.text, user, timeStr, encMsgId = if (chatMessage.enc) chatMessage.id else null)
+    else -> ChatFromItem(chatMessage.text, user, timeStr, encMsgId = if (chatMessage.enc) chatMessage.id else null)
 }

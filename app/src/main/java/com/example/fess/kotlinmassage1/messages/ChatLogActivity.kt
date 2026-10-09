@@ -14,6 +14,7 @@ import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.models.ChatMessage
 import com.example.fess.kotlinmassage1.models.User
 import com.example.fess.kotlinmassage1.registerlogin.LoginActivity
+import com.example.fess.kotlinmassage1.util.CryptoBridge
 import com.example.fess.kotlinmassage1.util.DbPaths
 import com.example.fess.kotlinmassage1.util.ImageCache
 import com.example.fess.kotlinmassage1.util.ImageLoader
@@ -80,6 +81,10 @@ class ChatLogActivity : AppCompatActivity() {
         }
 
         supportActionBar?.title = partner.username
+
+        // E2EE: греем кэш pubkey собеседника — картинки в фоне (ImageLoader)
+        // шифруются/расшифровываются без сетевого RTT на каждое сообщение
+        CryptoBridge.warmPartnerKey(partner.uid)
 
         listenForMessages()
 
@@ -195,11 +200,40 @@ class ChatLogActivity : AppCompatActivity() {
      * сообщение» могли разъехаться, а push потеряться.
      */
     private fun writeMessage(text: String, msgType: String) {
+        if (msgType == ChatMessage.TYPE_TEXT) {
+            // E2EE: шифруем текст под pubkey получателя; если ключа нет / TOFU не дал —
+            // пишем открытым текстом (обратная совместимость со старыми клиентами).
+            val fromId = FirebaseAuth.getInstance().uid ?: return
+            val toId = toUser?.uid ?: return
+            val db = FirebaseDatabase.getInstance().reference
+            val msgId = db.child(DbPaths.conversation(fromId, toId)).push().key ?: return
+            CryptoBridge.encryptTextForSend(
+                this, toId, text, msgId,
+                onReady = { envelopeB64 -> writeMessageToDb(envelopeB64, msgType, encrypted = true, forcedId = msgId) },
+                onFallback = { reason ->
+                    Log.w(TAG, "E2EE fallback (plaintext): $reason")
+                    writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId)
+                }
+            )
+        } else {
+            writeMessageToDb(text, msgType, encrypted = false)
+        }
+    }
+
+    /**
+     * Единая точка записи сообщения: ОДИН атомарный multi-path update
+     * (user-messages в обе стороны + latest-messages + задача push в /outbox).
+     * Раньше было 5 независимых setValue — при обрыве сети диалог и «последнее
+     * сообщение» могли разъехаться, а push потеряться.
+     */
+    private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null) {
         val fromId = FirebaseAuth.getInstance().uid ?: return
         val toId = toUser?.uid ?: return
 
         val db = FirebaseDatabase.getInstance().reference
-        val messageRef = db.child(DbPaths.conversation(fromId, toId)).push()
+        // id уже выбран на этапе шифрования текста (HKDF salt = msgId) — переиспользуем
+        val messageRef = if (forcedId != null) db.child(DbPaths.conversation(fromId, toId)).child(forcedId)
+                         else db.child(DbPaths.conversation(fromId, toId)).push()
         val mirrorKey = db.child(DbPaths.conversation(toId, fromId)).push().key ?: return
 
         val nowSec = System.currentTimeMillis() / 1000
@@ -212,31 +246,45 @@ class ChatLogActivity : AppCompatActivity() {
             return
         }
 
-        // preview для пуша: base64 туда НЕ кладём (лимит payload 4 КБ)
-        val preview = if (msgType == ChatMessage.TYPE_IMAGE) "📷 Картинка" else text.take(120)
+        // preview для пуша: base64/шифртекст туда НЕ кладём (лимит payload 4 КБ);
+        // для шифрованного текста содержимое недоступно — только сам факт сообщения
+        val preview = when {
+            msgType == ChatMessage.TYPE_IMAGE -> "📷 Картинка"
+            encrypted -> "🔒 Сообщение"
+            else -> text.take(120)
+        }
 
         val updates = HashMap<String, Any>()
 
-        // --- Новый relay-формат для картинок: тело base64 живёт ОДИН раз в
-        // /transfers/<id> (7 дней), в сообщениях только transferRef + превью.
-        // Это убирает дубли base64 (раньше одна картинка лежала 4 раза: два
-        // зеркала чата + latest-messages x2).
+        // --- Новый relay-формат для картинок: тело живёт ОДИН раз в /transfers/<id>
+        // (7 дней), в сообщениях только transferRef + превью. Это убирает дубли
+        // base64 (раньше одна картинка лежала 4 раза: два зеркала чата + latest x2).
+        // E2EE v1: если у получателя есть pubkey — тело шифруется (в ноде поля
+        // enc/epk/alg вместо открытой data); иначе пишем открытую data (fallback).
         val chatMessage = if (msgType == ChatMessage.TYPE_IMAGE) {
             val id = messageRef.key!!
-            updates["/${DbPaths.transfer(id)}"] = mapOf(
-                "fromId" to fromId,
-                "toIds" to listOf(toId),
-                "type" to "image",
-                "mime" to ImageUtils.mimeOf(text),
-                "sizeBytes" to text.length,
-                "createdAt" to nowSec,
-                "expiresAt" to nowSec + TRANSFER_TTL_SEC,
-                "data" to text,
-                "deliveredTo" to mapOf(fromId to nowSec) // отправитель «уже имеет»
+            val encNode = CryptoBridge.buildEncryptedTransferNode(
+                this, toId, id, text, fromId, nowSec, TRANSFER_TTL_SEC
             )
+            if (encNode != null) {
+                updates["/${DbPaths.transfer(id)}"] = encNode
+            } else {
+                Log.w(TAG, "E2EE image fallback (plaintext transfer)")
+                updates["/${DbPaths.transfer(id)}"] = mapOf(
+                    "fromId" to fromId,
+                    "toIds" to listOf(toId),
+                    "type" to "image",
+                    "mime" to ImageUtils.mimeOf(text),
+                    "sizeBytes" to text.length,
+                    "createdAt" to nowSec,
+                    "expiresAt" to nowSec + TRANSFER_TTL_SEC,
+                    "data" to text,
+                    "deliveredTo" to mapOf(fromId to nowSec) // отправитель «уже имеет»
+                )
+            }
             ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id)
         } else {
-            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType)
+            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted)
         }
 
         // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.

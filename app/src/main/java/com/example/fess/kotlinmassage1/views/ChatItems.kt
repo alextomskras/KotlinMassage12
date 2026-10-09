@@ -14,7 +14,12 @@ import com.example.fess.kotlinmassage1.util.ImageUtils
  * Реализуют ChatRowDelegate — рендерятся через ChatRecyclerAdapter (без groupie).
  */
 
-class ChatFromItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
+class ChatFromItem(
+    val text: String,
+    val user: User,
+    val time: String,
+    private val encMsgId: String? = null
+) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -22,7 +27,7 @@ class ChatFromItem(val text: String, val user: User, val time: String) : ChatRow
     override fun layoutRes(): Int = R.layout.chat_from_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = text
+        viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = displayText(text, encMsgId)
         viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_from_message_time2).text = time
         ImageLoader.loadAvatarInto(
             user.profileImageUrl,
@@ -31,7 +36,12 @@ class ChatFromItem(val text: String, val user: User, val time: String) : ChatRow
     }
 }
 
-class ChatToItem(val text: String, val user: User, val time: String) : ChatRowDelegate {
+class ChatToItem(
+    val text: String,
+    val user: User,
+    val time: String,
+    private val encMsgId: String? = null
+) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -39,13 +49,24 @@ class ChatToItem(val text: String, val user: User, val time: String) : ChatRowDe
     override fun layoutRes(): Int = R.layout.chat_to_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = text
+        viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = displayText(text, encMsgId)
         viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_to_message_time2).text = time
         ImageLoader.loadAvatarInto(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row)
         )
     }
+}
+
+/**
+ * E2EE v1: если у сообщения стоит флаг enc, в text лежит base64 конверта —
+ * показываем расшифрованный текст; при неудаче (нет приватника / чужой ключ)
+ * понятную заглушку вместо кашы base64.
+ */
+private fun displayText(text: String, encMsgId: String?): String {
+    if (encMsgId == null) return text
+    return com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(encMsgId, text)
+        ?: "🔒 Нет доступа к сообщению"
 }
 
 /**

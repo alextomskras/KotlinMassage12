@@ -24,7 +24,12 @@ class ChatMessage(
      * где лежит base64-тело (живёт 7 дней). В самом сообщении тела нет —
      * это убирает дубли base64 в RTDB.
      */
-    val transferRef: String? = null
+    val transferRef: String? = null,
+    /**
+     * E2EE v1 (docs/ENCRYPTION_CONCEPT.md): текст зашифрован (CryptoBox AES-GCM),
+     * в [text] лежит base64 JSON-конверта {"enc","epk","alg"}.
+     */
+    val enc: Boolean = false
 ) {
     companion object {
         const val TYPE_TEXT = "text"

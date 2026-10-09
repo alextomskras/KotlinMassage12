@@ -82,7 +82,8 @@ object ImageLoader {
                 FirebaseDatabase.getInstance().getReference(DbPaths.transfer(transferRef))
                     .addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(snapshot: DataSnapshot) {
-                            val d = snapshot.child("data").getValue(String::class.java)
+                            // E2EE: нода может содержать конверт enc/epk вместо открытой data
+                            val d = CryptoBridge.readTransferPayload(transferRef, snapshot)
                             val bmp = if (!d.isNullOrEmpty()) ImageUtils.base64ToBitmap(d) else null
                             if (!d.isNullOrEmpty()) ImageCache.putFromBase64(context.applicationContext, transferRef, d)
                             main.post { callback(bmp) }
@@ -173,11 +174,13 @@ object ImageLoader {
             FirebaseDatabase.getInstance().getReference(DbPaths.transfer(msgId))
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        val data = snapshot.child("data").getValue(String::class.java)
+                        // E2EE v1: нода может быть конвертом enc/epk — readTransferPayload
+                        // расшифрует нашим приватником; открытая "data" читается как раньше.
+                        val data = CryptoBridge.readTransferPayload(msgId, snapshot)
                         if (data.isNullOrEmpty()) {
                             main.post {
                                 if (target.getTag(TAG_KEY) == msgId)
-                                    target.setImageResource(R.drawable.image_expired) // заглушка: удалено/истекло
+                                    target.setImageResource(R.drawable.image_expired) // заглушка: удалено/истекло/нет ключа
                             }
                             return
                         }
