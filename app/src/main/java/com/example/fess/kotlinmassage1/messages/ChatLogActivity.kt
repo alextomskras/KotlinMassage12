@@ -305,7 +305,8 @@ class ChatLogActivity : AppCompatActivity() {
             }
             ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id, env = imageEnv)
         } else {
-            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted)
+            val textMirror = if (encrypted) forcedId?.let { CryptoBridge.takeTextMirror(it) } else null
+            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted, env = textMirror)
         }
 
         // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.

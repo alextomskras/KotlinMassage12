@@ -90,7 +90,7 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного
     // сообщения видел «🔒 Нет доступа» вместо текста.
-    chatMessage.enc -> TextItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming)
+    chatMessage.enc -> TextItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = chatMessage.env)
     isIncoming -> ChatToItem(chatMessage.text, user, timeStr)
     else -> ChatFromItem(chatMessage.text, user, timeStr)
 }

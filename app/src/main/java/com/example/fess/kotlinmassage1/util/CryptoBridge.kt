@@ -50,7 +50,12 @@ object CryptoBridge {
             toUid,
             onKey = { pub ->
                 try {
+                    // receiver-конверт (эфемерида под pubkey получателя) — в msg.text;
+                    // sender-зеркало (selfless того же plain) — в msg.env, чтобы
+                    // отправитель мог прочитать своё сообщение после перезапуска.
                     val env = CryptoBox.encryptText(plain, pub, msgId)
+                    val mirror = CryptoBox.encryptSelfless(plain.toByteArray(Charsets.UTF_8), msgId, image = false)
+                    pendingTextMirrors[msgId] = envelopeToJson(mirror)
                     onReady(envelopeToJson(env))
                 } catch (e: Exception) {
                     Log.e(TAG, "encryptText failed", e)
@@ -61,26 +66,43 @@ object CryptoBridge {
         )
     }
 
+    /** Selfless-зеркало текста для отправителя (msgId -> base64 JSON-конверта). */
+    private val pendingTextMirrors = HashMap<String, String>()
+
+    fun takeTextMirror(msgId: String): String? = pendingTextMirrors.remove(msgId)
+
     /**
      * Расшифровывает msg.text, если msg.enc==true. Возвращает plain text или null
      * (нет ключей / чужой конверт / битый base64) — вызывающий решает заглушку.
      */
     fun decryptText(myUid: String?, fromId: String?, msgId: String, envelopeB64: String): String? {
         return try {
-            // Дешифровка требует ТОЛЬКО своего приватника: текст шифруется
-            // ЭФЕМЕРНОЙ парой отправителя (epk лежит в конверте), поэтому
-            // чужие ключи и сеть не нужны. getPrivateKey() лениво разворачивает
-            // ключ из wrapped-файла синхронно и без сети.
-            //
-            // Если свой приватник НЕ подошёл (AES-GCM tag не сходится) —
-            // сообщение зашифровано ДРУГОЙ парой этого же uid (перелогин /
-            // новое устройство / переустановка). Восстановить такой текст
-            // невозможно НИ У КОГО — это фундаментальное свойство E2EE, а не
-            // баг. Возвращаем null; UI честно покажёт заглушку.
+            // Текст шифруется ЭФЕМЕРНОЙ парой отправителя под pubkey получателя.
+            // Получатель дешифрует своим static-приватником (ECDH с epk из
+            // конверта). ОТПРАВИТЕЛЬ же физически не может пройти этот путь —
+            // эфемериду он не сохраняет (см. тест crypto_roundtrip.py: AES-GCM
+            // InvalidTag). Поэтому для своих сообщений читаем selfless-конверт
+            // из поля env (encryptSelfless — тот же plain, что ушёл получателю).
             val env = jsonToEnvelope(envelopeB64) ?: return null
             CryptoBox.decryptText(env, msgId)
         } catch (e: Exception) {
-            Log.w(TAG, "decryptText($msgId) failed: ${e.message}")
+            Log.w(TAG, "decryptText($msgId) ephemeral path failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Зеркало текста для ОТПРАВИТЕЛЯ: msg.env содержит selfless-конверт того же
+     * plaintext (создаётся в encryptTextForSend). Читается нашим же приватником
+     * без эфемериды и без чужих ключей. null — нет env / битый конверт /
+     * ключи сменены после отправки (честная заглушка в UI).
+     */
+    fun decryptTextFromEnv(msgId: String, envB64: String): String? {
+        return try {
+            val env = jsonToEnvelope(envB64) ?: return null
+            String(CryptoBox.decryptSelfless(env, msgId, image = false), Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.w(TAG, "decryptTextFromEnv($msgId) failed: ${e.message}")
             null
         }
     }

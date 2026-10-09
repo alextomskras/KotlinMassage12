@@ -85,7 +85,8 @@ class TextItem(
     val user: User,
     val time: String,
     val msgId: String,
-    private val isIncoming: Boolean = false
+    private val isIncoming: Boolean = false,
+    private val envMirror: String? = null
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -97,7 +98,19 @@ class TextItem(
         val textId = if (isIncoming) R.id.textview_to_row else R.id.textview_from_row
         val timeId = if (isIncoming) R.id.textView_chat_to_message_time2 else R.id.textView_chat_from_message_time2
         val avatarId = if (isIncoming) R.id.imageview_chat_to_row else R.id.imageview_chat_from_row
-        viewHolder.itemView.findViewById<TextView>(textId).text = displayText(text, msgId)
+        // Входящее: эфемерный конверт из text читается нашим приватником.
+        // Исходящее: эфемерида отправителем не сохраняется — читаем selfless-
+        // зеркало из env; если зеркала нет (старое сообщение), показывать
+        // нечего (в text лежит base64 шифра) — честная заглушка.
+        val shown = if (!isIncoming) {
+            com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)
+                ?: "🔒 Нет доступа к сообщению"
+        } else {
+            envMirror?.let {
+                com.example.fess.kotlinmassage1.util.CryptoBridge.decryptTextFromEnv(msgId, it)
+            } ?: "🔒 Нет доступа к сообщению"
+        }
+        viewHolder.itemView.findViewById<TextView>(textId).text = shown
         viewHolder.itemView.findViewById<TextView>(timeId).text = time
         ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
     }
