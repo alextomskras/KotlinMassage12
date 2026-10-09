@@ -67,13 +67,19 @@ object CryptoBridge {
      */
     fun decryptText(msgId: String, envelopeB64: String): String? {
         return try {
-        val env = jsonToEnvelope(envelopeB64) ?: return null
-        CryptoBox.decryptText(env, msgId)
-    } catch (e: Exception) {
-        Log.w(TAG, "decryptText($msgId) failed: ${e.message}")
-        null
+            val env = jsonToEnvelope(envelopeB64) ?: return null
+            CryptoBox.decryptText(env, msgId)
+        } catch (e: Exception) {
+            Log.w(TAG, "decryptText($msgId) failed: ${e.message}")
+            null
+        }
     }
-    }
+
+    /**
+     * Превью для пушей/списка диалогов: содержимое шифрованного сообщения
+     * недоступно никому, кроме сторон диалога — в превью только сам факт.
+     */
+    const val ENCRYPTED_PREVIEW = "🔒 Сообщение"
 
     // -------------------------------------------------------------- картинки
 

@@ -70,6 +70,37 @@ private fun displayText(text: String, encMsgId: String?): String {
 }
 
 /**
+ * Строка зашифрованного текста (E2EE v1). Отличается от Chat{From,To}Item тем,
+ * что ВСЕГДА пытается дешифровать и применяется к обеим сторонам диалога:
+ * конверт шифруется эфемерной парой отправителя под pubkey получателя, но
+ * зеркало чата читается СВОИМ приватником — отправитель тоже видит свой текст
+ * (как Signal/WhatsApp). Раньше enc-обработка была только у входящих, и автор
+ * своего зашифрованного сообщения видел «🔒 Нет доступа к сообщению».
+ */
+class TextItem(
+    val text: String,
+    val user: User,
+    val time: String,
+    val msgId: String,
+    private val isIncoming: Boolean = false
+) : ChatRowDelegate {
+
+    override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
+
+    override fun layoutRes(): Int = if (isIncoming) R.layout.chat_to_row else R.layout.chat_from_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
+        val textId = if (isIncoming) R.id.textview_to_row else R.id.textview_from_row
+        val timeId = if (isIncoming) R.id.textView_chat_to_message_time2 else R.id.textView_chat_from_message_time2
+        val avatarId = if (isIncoming) R.id.imageview_chat_to_row else R.id.imageview_chat_from_row
+        viewHolder.itemView.findViewById<TextView>(textId).text = displayText(text, msgId)
+        viewHolder.itemView.findViewById<TextView>(timeId).text = time
+        ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
+    }
+}
+
+/**
  * Картинка от нас. Три формата (обратная совместимость):
  *  - transferRef -> relay-зона /transfers/<id> (base64 живёт 7 дней, затем локальный кэш);
  *  - base64 data-URI в text -> legacy «тело в сообщении»;

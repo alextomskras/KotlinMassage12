@@ -250,7 +250,7 @@ class ChatLogActivity : AppCompatActivity() {
         // для шифрованного текста содержимое недоступно — только сам факт сообщения
         val preview = when {
             msgType == ChatMessage.TYPE_IMAGE -> "📷 Картинка"
-            encrypted -> "🔒 Сообщение"
+            encrypted -> CryptoBridge.ENCRYPTED_PREVIEW
             else -> text.take(120)
         }
 
