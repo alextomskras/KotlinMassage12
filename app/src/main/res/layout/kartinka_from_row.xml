@@ -19,8 +19,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toEndOf="@+id/imageview_chat_from_row2"
         app:layout_constraintTop_toTopOf="parent"
-        app:srcCompat="@android:drawable/btn_star_big_on"
-        tools:src="@drawable/common_google_signin_btn_icon_dark" />
+        android:background="@drawable/image_placeholder" />
 
     <TextView
         android:id="@+id/textView_message_time"

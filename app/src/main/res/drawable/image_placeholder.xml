@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Нейтральная заглушка для превью картинок (список диалогов и чат).
+  Заставляет ImageView не рисовать лаунчер-иконку/зелёный овал из layout,
+  а показывать ровлый серый фон до прихода реального bitmap.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#E0E0E0" />
+    <corners android:radius="8dp" />
+</shape>

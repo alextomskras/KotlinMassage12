@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Заглушка «картинка протухла»: relay-тело в /transfers живёт 7 дней,
+  если скачали позже (или кэш был очищен) — рисуем этот серый фон с красным
+  крестом вместо bitmap.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="#E0E0E0" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item
+        android:width="32dp"
+        android:height="32dp"
+        android:gravity="center">
+        <vector
+            android:width="32dp"
+            android:height="32dp"
+            android:viewportWidth="24"
+            android:viewportHeight="24">
+            <path
+                android:fillColor="#B00020"
+                android:pathData="M12,2C6.47,2 2,6.47 2,12s4.47,10 10,10 10,-4.47 10,-10S17.53,2 12,2zM17,15.59L15.59,17 12,13.41 8.41,17 7,15.59 10.59,12 7,8.41 8.41,7 12,10.59 15.59,7 17,8.41 13.41,12 17,15.59z" />
+        </vector>
+    </item>
+</layer-list>

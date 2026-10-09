@@ -37,8 +37,14 @@ object ImageLoader {
      * Защита от переиспользования ViewHolder: если к моменту готовности вьюха уже
      * привязана к другому тексту — результат игнорируется.
      */
-    /** base64-payload -> Bitmap в фоновом потоке; результат применяется к ImageView в main. */
+    /**
+     * base64-payload -> Bitmap в фоновом потоке; результат применяется к ImageView в main.
+     * Ставит нейтральный placeholder сразу и сбрасывает старый bitmap — иначе при
+     * переиспользовании ViewHolder в списке диалогов показывается картинка/заставка
+     * от предыдущей строки, пока грузится текущая.
+     */
     fun loadBase64ToView(data: String, target: android.widget.ImageView, maxSide: Int = 0) {
+        target.setImageResource(R.drawable.image_placeholder)
         target.setTag(TAG_KEY, data)
         executor.execute {
             val bmp = ImageUtils.base64ToBitmap(data, maxSide)
@@ -126,6 +132,9 @@ object ImageLoader {
      * Колбэк всегда в main-потоке.
      */
     fun loadTransferToView(context: Context, msgId: String, myUid: String?, target: android.widget.ImageView) {
+        // сбрасываем вьюху на нейтральный placeholder: без этого при переиспользовании
+        // ViewHolder показывается bitmap/заставка от предыдущей строки списка
+        target.setImageResource(R.drawable.image_placeholder)
         target.setTag(TAG_KEY, msgId)
         executor.execute {
             // 1) локальный кэш
@@ -144,7 +153,7 @@ object ImageLoader {
                         if (data.isNullOrEmpty()) {
                             main.post {
                                 if (target.getTag(TAG_KEY) == msgId)
-                                    target.setImageResource(R.drawable.ic_launcher_foreground) // заглушка: удалено/истекло
+                                    target.setImageResource(R.drawable.image_expired) // заглушка: удалено/истекло
                             }
                             return
                         }
