@@ -1,1 +1,29 @@
-(empty)
+# Build systems
+.gradle/
+build/
+app/build/
+*/build/
+
+# Android / IDE
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# JVM crash logs & temp
+hs_err_pid*
+replay_pid*
+*.tmp
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS cruft
+.DS_Store
+Thumbs.db

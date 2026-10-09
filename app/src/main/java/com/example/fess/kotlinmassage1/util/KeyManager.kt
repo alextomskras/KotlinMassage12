@@ -146,12 +146,16 @@ object KeyManager {
             val gen = X25519KeyPairGenerator()
             gen.init(X25519KeyGenerationParameters(SecureRandom()))
             val pair = gen.generateKeyPair()
+            // AsymmetricCipherKeyPair.getPublic()/getPrivate() возвращают базовый
+            // AsymmetricKeyParameter — у него нет getEncoded(), поэтому сразу
+            // приводим к X25519-типам и работаем со стронгованными ссылками.
             val priv = pair.private as X25519PrivateKeyParameters
-            val wrapped = wrap(priv.getEncoded())
-            atomicWrite(wrappedFile(), wrapped)
-            atomicWrite(pubFile(), pair.public.getEncoded())
+            val pub = pair.public as X25519PublicKeyParameters
+            val pubBytes = pub.getEncoded()
+            atomicWrite(wrappedFile(), wrap(priv.getEncoded()))
+            atomicWrite(pubFile(), pubBytes)
             cachedPriv = priv
-            Log.i(TAG, "X25519 keypair generated, fingerprint=${fingerprint(pair.public.getEncoded())}")
+            Log.i(TAG, "X25519 keypair generated, fingerprint=${fingerprint(pubBytes)}")
             return priv
         }
     }
