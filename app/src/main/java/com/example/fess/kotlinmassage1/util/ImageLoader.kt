@@ -131,17 +131,41 @@ object ImageLoader {
      * «все скачали»). Если тела уже нет и в кэша тоже — callback(null) = заглушка.
      * Колбэк всегда в main-потоке.
      */
-    fun loadTransferToView(context: Context, msgId: String, myUid: String?, target: android.widget.ImageView) {
+    fun loadTransferToView(
+        context: Context,
+        msgId: String,
+        myUid: String?,
+        target: android.widget.ImageView,
+        maxSide: Int = 0,
+        payload: String? = null
+    ) {
         // сбрасываем вьюху на нейтральный placeholder: без этого при переиспользовании
         // ViewHolder показывается bitmap/заставка от предыдущей строки списка
         target.setImageResource(R.drawable.image_placeholder)
         target.setTag(TAG_KEY, msgId)
+        // msgId пустой (старое сообщение без id) — сразу пробуем payload/URL
+        if (msgId.isEmpty()) {
+            if (payload != null && ImageUtils.isImagePayload(payload)) {
+                loadBase64ToView(payload, target, maxSide)
+            } else if (!payload.isNullOrEmpty()) {
+                Picasso.get().load(payload).into(target)
+            }
+            return
+        }
         executor.execute {
             // 1) локальный кэш
-            val cached = ImageCache.getBitmap(context.applicationContext, msgId)
+            val cached = ImageCache.getBitmap(context.applicationContext, msgId, maxSide)
             if (cached != null) {
                 main.post {
                     if (target.getTag(TAG_KEY) == msgId) target.setImageBitmap(cached)
+                }
+                return@execute
+            }
+            // 1b) legacy-формат: base64 лежит прямо в тексте сообщения
+            if (payload != null && ImageUtils.isImagePayload(payload)) {
+                val bmpLegacy = ImageUtils.base64ToBitmap(payload, maxSide)
+                main.post {
+                    if (bmpLegacy != null && target.getTag(TAG_KEY) == msgId) target.setImageBitmap(bmpLegacy)
                 }
                 return@execute
             }
@@ -157,7 +181,7 @@ object ImageLoader {
                             }
                             return
                         }
-                        val bmp = ImageUtils.base64ToBitmap(data)
+                        val bmp = ImageUtils.base64ToBitmap(data, maxSide)
                         // сохраняем в кэш и ставим ACK доставки
                         ImageCache.putFromBase64(context.applicationContext, msgId, data)
                         if (!myUid.isNullOrEmpty()) {
@@ -175,6 +199,18 @@ object ImageLoader {
 
                     override fun onCancelled(error: DatabaseError) {
                         android.util.Log.w("ImageLoader", "transfer $msgId read failed: ${error.message}")
+                        // доступ к relay-зоне запрещён/ошибка сети: если тело пришло
+                        // прямо в тексте сообщения (legacy base64 или URL) — рисуем его,
+                        // иначе серая заглушка вместо пустого места
+                        if (!payload.isNullOrEmpty()) {
+                            if (ImageUtils.isImagePayload(payload)) loadBase64ToView(payload, target, maxSide)
+                            else Picasso.get().load(payload).into(target)
+                        } else {
+                            main.post {
+                                if (target.getTag(TAG_KEY) == msgId)
+                                    target.setImageResource(R.drawable.image_expired)
+                            }
+                        }
                     }
                 })
         }

@@ -85,14 +85,18 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_imageview_latest_message)
 
         if (isImage) {
-            previewText.text = "📷 Картинка"
+            // в списке диалогов превью НЕ подписываем словами — только сама картинка
+            previewText.text = ""
             val ctx = rowContext
-            val ref = chatMessage.transferRef
+            // transferRef: явно (relay-формат) либо id сообщения (fallback для
+            // старых записей без поля); пустой ref внутри loadTransferToView сам
+            // переходит на payload/URL
+            val ref = chatMessage.transferRef ?: chatMessage.id
             when {
-                !ref.isNullOrEmpty() && ctx != null ->
-                    ImageLoader.loadTransferToView(ctx, ref, FirebaseAuth.getInstance().uid, image)
+                ctx != null ->
+                    ImageLoader.loadTransferToView(ctx, ref, FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = chatMessage.text)
                 ImageUtils.isImagePayload(chatMessage.text) ->
-                    ImageLoader.loadBase64ToView(chatMessage.text, image)
+                    ImageLoader.loadBase64ToView(chatMessage.text, image, maxSide = 300)
                 else ->
                     // обратная совместимость со старыми URL из Firebase Storage
                     Picasso.get().load(chatMessage.text).into(image)

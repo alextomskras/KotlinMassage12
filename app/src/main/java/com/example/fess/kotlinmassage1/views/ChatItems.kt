@@ -74,7 +74,7 @@ class KartinkaFromItem(
         val ctx = rowContext
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
-                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
@@ -112,7 +112,7 @@ class KartinkaToItem(
         val ctx = rowContext
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
-                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image)
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
