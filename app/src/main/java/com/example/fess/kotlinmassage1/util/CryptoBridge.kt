@@ -84,43 +84,66 @@ object CryptoBridge {
     // -------------------------------------------------------------- картинки
 
     /**
-     * Готовит relay-узл /transfers/<id> с ЗАШИФРОВАННЫМ телом.
+     * Готовит E2EE-конверт для КАРТИНКИ под получателя. Асинхронно (fetchPartnerKey
+     * может сходить в RTDB за pubkey). Колбэки приходят в main-потоке вызова.
      * @param base64Payload data-URI base64 оригинала (ImageUtils.compressToResult).
-     * @return map для setValue или null, если шифрование невозможно (тогда
-     *   вызывающий пишет открытую "data" — старый получатель её прочитает).
+     * @param onReady envelopeB64 — кладём в поле "env" сообщения; тело ещё не шифровано.
+     * @param onFallback нет pubkey / ошибка — пишем открытую relay-ноду.
      */
-    fun buildEncryptedTransferNode(
-        context: Context,
+    fun prepareImageEnvelope(
         toUid: String,
         msgId: String,
         base64Payload: String,
+        onReady: (envelopeB64: String) -> Unit,
+        onFallback: (reason: String) -> Unit
+    ) {
+        KeyManager.fetchPartnerKey(
+            toUid,
+            onKey = { pub ->
+                try {
+                    val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
+                    val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
+                    onReady(envelopeToJson(env))
+                } catch (e: Exception) {
+                    Log.e(TAG, "prepareImageEnvelope failed", e)
+                    onFallback("Не удалось зашифровать картинку: ${e.message}")
+                }
+            },
+            onError = onFallback
+        )
+    }
+
+    /**
+     * Собирает relay-узел /transfers/<id> по ГОТОВОМУ конверту из сообщения:
+     * enc/epk вынимаются из env (дублировать шифрование не нужно — env уже лежит
+     * в зеркале диалога и переживает TTL relay). Если env битый/нет — null,
+     * вызывающий пишет открытую "data".
+     */
+    fun buildTransferNodeFromEnv(
+        envJson: String?,
+        msgId: String,
+        base64Payload: String,
         fromId: String,
+        toUid: String,
         nowSec: Long,
         ttlSec: Long
     ): Map<String, Any>? {
         return try {
-            val pub = pubKeyCache[toUid] ?: return null
-            val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
-            val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
+            val env = jsonToEnvelope(envJson ?: return null) ?: return null
             mapOf(
                 "fromId" to fromId,
                 "toIds" to listOf(toUid),
                 "type" to "image",
                 "mime" to ImageUtils.mimeOf(base64Payload),
-                "sizeBytes" to base64Payload.length, // размер шифртекста ~ размер тела
+                "sizeBytes" to env.encB64.length, // размер шифртекста ~ размер тела
                 "createdAt" to nowSec,
                 "expiresAt" to nowSec + ttlSec,
                 "enc" to env.encB64,
                 "epk" to env.epkB64,
-                "alg" to env.alg,
-                // Ключевые поля E2EE-картинки дублируются в текст сообщения
-                // (зеркало /conversation). Иначе ни одна сторона диалога не
-                // сможет расшифровать relay-тело после истечения TTL 7 дней
-                // (в /transfers нода удаляется) — у обоих висит заглушка.
-                "env" to envelopeToJson(env)
+                "alg" to env.alg
             )
         } catch (e: Exception) {
-            Log.e(TAG, "buildEncryptedTransferNode failed", e)
+            Log.e(TAG, "buildTransferNodeFromEnv failed", e)
             null
         }
     }

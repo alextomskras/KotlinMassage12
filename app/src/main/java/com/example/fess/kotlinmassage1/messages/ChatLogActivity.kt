@@ -215,6 +215,26 @@ class ChatLogActivity : AppCompatActivity() {
                     writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId)
                 }
             )
+        } else if (msgType == ChatMessage.TYPE_IMAGE) {
+            // E2EE картинок: сначала получаем pubkey собеседника и шифруем тело.
+            // Конверт кладём В САМОЕ СООБЩЕНИЕ (поле env) — оно живёт вечно,
+            // а relay-нода /transfers удаляется через 7 дней. Если делать наоборот
+            // (ключ читать синхронно из кэша), при первом открытии диалога кэш пуст и
+            // картинка уходит открытой, а env нет — отправитель остаётся с заглушкой.
+            val fromId = FirebaseAuth.getInstance().uid ?: return
+            val toId = toUser?.uid ?: return
+            val db = FirebaseDatabase.getInstance().reference
+            val msgId = db.child(DbPaths.conversation(fromId, toId)).push().key ?: return
+            CryptoBridge.prepareImageEnvelope(
+                toId, msgId, text,
+                onReady = { envelopeB64 ->
+                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = envelopeB64)
+                },
+                onFallback = { reason ->
+                    Log.w(TAG, "E2EE image fallback (plaintext transfer): $reason")
+                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = null)
+                }
+            )
         } else {
             writeMessageToDb(text, msgType, encrypted = false)
         }
@@ -226,7 +246,7 @@ class ChatLogActivity : AppCompatActivity() {
      * Раньше было 5 независимых setValue — при обрыве сети диалог и «последнее
      * сообщение» могли разъехаться, а push потеряться.
      */
-    private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null) {
+    private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null, imageEnv: String? = null) {
         val fromId = FirebaseAuth.getInstance().uid ?: return
         val toId = toUser?.uid ?: return
 
@@ -263,15 +283,12 @@ class ChatLogActivity : AppCompatActivity() {
         // enc/epk/alg вместо открытой data); иначе пишем открытую data (fallback).
         val chatMessage = if (msgType == ChatMessage.TYPE_IMAGE) {
             val id = messageRef.key!!
-            val encNode = CryptoBridge.buildEncryptedTransferNode(
-                this, toId, id, text, fromId, nowSec, TRANSFER_TTL_SEC
-            )
-            var imageEnv: String? = null // E2EE-конверт картинки для зеркала диалога
+            // Конверт уже готов (сообщение шифровалось ДО записи). Relay-нода
+            // собирается из него же — без второго шифрования и без гонки ключей.
+            val encNode = CryptoBridge.buildTransferNodeFromEnv(imageEnv, id, text, fromId, toId, nowSec, TRANSFER_TTL_SEC)
             if (encNode != null) {
                 updates["/${DbPaths.transfer(id)}"] = encNode
-                imageEnv = encNode["env"] as? String
             } else {
-                Log.w(TAG, "E2EE image fallback (plaintext transfer)")
                 updates["/${DbPaths.transfer(id)}"] = mapOf(
                     "fromId" to fromId,
                     "toIds" to listOf(toId),
