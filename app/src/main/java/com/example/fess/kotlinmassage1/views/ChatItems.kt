@@ -111,7 +111,8 @@ class KartinkaFromItem(
     val user: User,
     val time: String,
     val msgId: String = "",
-    val transferRef: String? = null
+    val transferRef: String? = null,
+    val envJson: String? = null
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -126,7 +127,7 @@ class KartinkaFromItem(
         val ctx = rowContext
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
-                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text)
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
@@ -134,7 +135,7 @@ class KartinkaFromItem(
         // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
         image.setOnClickListener {
             val c = ctx ?: image.context
-            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text).show()
+            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson).show()
         }
 
         ImageLoader.loadAvatarInto(
@@ -149,7 +150,8 @@ class KartinkaToItem(
     val user: User,
     val time: String,
     val msgId: String = "",
-    val transferRef: String? = null
+    val transferRef: String? = null,
+    val envJson: String? = null
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -164,7 +166,7 @@ class KartinkaToItem(
         val ctx = rowContext
         when {
             !transferRef.isNullOrEmpty() && ctx != null ->
-                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text)
+                ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
@@ -172,7 +174,7 @@ class KartinkaToItem(
         // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
         image.setOnClickListener {
             val c = ctx ?: image.context
-            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text).show()
+            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson).show()
         }
 
         ImageLoader.loadAvatarInto(

@@ -94,7 +94,7 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, 
             val ref = chatMessage.transferRef ?: chatMessage.id
             when {
                 ctx != null ->
-                    ImageLoader.loadTransferToView(ctx, ref, FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = chatMessage.text)
+                    ImageLoader.loadTransferToView(ctx, ref, FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = chatMessage.text, envJson = chatMessage.env)
                 ImageUtils.isImagePayload(chatMessage.text) ->
                     ImageLoader.loadBase64ToView(chatMessage.text, image, maxSide = 300)
                 else ->

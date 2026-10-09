@@ -79,9 +79,9 @@ interface ChatRowDelegate {
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */
 fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeStr: String): ChatRowDelegate = when {
     chatMessage.type == ChatMessage.TYPE_IMAGE && isIncoming ->
-        KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null))
+        KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env)
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
-        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null))
+        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env)
     // E2EE: enc-сообщение читают СВОИМ приватником обе стороны диалога — и
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного

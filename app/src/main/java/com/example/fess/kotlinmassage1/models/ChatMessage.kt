@@ -29,7 +29,13 @@ class ChatMessage(
      * E2EE v1 (docs/ENCRYPTION_CONCEPT.md): текст зашифрован (CryptoBox AES-GCM),
      * в [text] лежит base64 JSON-конверта {"enc","epk","alg"}.
      */
-    val enc: Boolean = false
+    val enc: Boolean = false,
+    /**
+     * E2EE картинка: relay-тело живёт в /transfers всего 7 дней, поэтому ключи
+     * конверта (epk+enc) дублируются в зеркало диалога. Есть поле — картинку
+     * можно расшифровать и после удаления relay-ноды (decryptImageFromMessage).
+     */
+    val env: String? = null
 ) {
     companion object {
         const val TYPE_TEXT = "text"

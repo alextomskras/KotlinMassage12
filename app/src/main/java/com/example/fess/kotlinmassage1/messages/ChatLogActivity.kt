@@ -266,8 +266,10 @@ class ChatLogActivity : AppCompatActivity() {
             val encNode = CryptoBridge.buildEncryptedTransferNode(
                 this, toId, id, text, fromId, nowSec, TRANSFER_TTL_SEC
             )
+            var imageEnv: String? = null // E2EE-конверт картинки для зеркала диалога
             if (encNode != null) {
                 updates["/${DbPaths.transfer(id)}"] = encNode
+                imageEnv = encNode["env"] as? String
             } else {
                 Log.w(TAG, "E2EE image fallback (plaintext transfer)")
                 updates["/${DbPaths.transfer(id)}"] = mapOf(
@@ -282,7 +284,7 @@ class ChatLogActivity : AppCompatActivity() {
                     "deliveredTo" to mapOf(fromId to nowSec) // отправитель «уже имеет»
                 )
             }
-            ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id)
+            ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id, env = imageEnv)
         } else {
             ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted)
         }

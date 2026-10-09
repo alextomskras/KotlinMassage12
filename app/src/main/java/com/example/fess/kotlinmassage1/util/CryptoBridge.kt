@@ -99,26 +99,53 @@ object CryptoBridge {
         ttlSec: Long
     ): Map<String, Any>? {
         return try {
-        val pub = pubKeyCache[toUid] ?: return null
-        val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
-        val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
-        mapOf(
-            "fromId" to fromId,
-            "toIds" to listOf(toUid),
-            "type" to "image",
-            "mime" to ImageUtils.mimeOf(base64Payload),
-            "sizeBytes" to base64Payload.length, // размер шифртекста ~ размер тела
-            "createdAt" to nowSec,
-            "expiresAt" to nowSec + ttlSec,
-            "enc" to env.encB64,
-            "epk" to env.epkB64,
-            "alg" to env.alg,
-            "deliveredTo" to mapOf(fromId to nowSec)
-        )
-    } catch (e: Exception) {
-        Log.e(TAG, "buildEncryptedTransferNode failed", e)
-        null
+            val pub = pubKeyCache[toUid] ?: return null
+            val raw = Base64.decode(base64Payload.substringAfter("base64,"), Base64.NO_WRAP)
+            val env = CryptoBox.encrypt(raw, pub, msgId, image = true)
+            mapOf(
+                "fromId" to fromId,
+                "toIds" to listOf(toUid),
+                "type" to "image",
+                "mime" to ImageUtils.mimeOf(base64Payload),
+                "sizeBytes" to base64Payload.length, // размер шифртекста ~ размер тела
+                "createdAt" to nowSec,
+                "expiresAt" to nowSec + ttlSec,
+                "enc" to env.encB64,
+                "epk" to env.epkB64,
+                "alg" to env.alg,
+                // Ключевые поля E2EE-картинки дублируются в текст сообщения
+                // (зеркало /conversation). Иначе ни одна сторона диалога не
+                // сможет расшифровать relay-тело после истечения TTL 7 дней
+                // (в /transfers нода удаляется) — у обоих висит заглушка.
+                "env" to envelopeToJson(env)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "buildEncryptedTransferNode failed", e)
+            null
+        }
     }
+
+    /**
+     * Читает картинку из E2EE-конверта, сохранённого в ТЕКСТЕ сообщения
+     * (поле env зеркала /conversation): дешифрует своим приватником и кладёт
+     * результат в файловый кэш ImageCache под msgId. Возвращает data-URI или
+     * null (нет ключей / битый конверт). Вызывается из строек чата, когда
+     * relay-нода /transfers уже удалена (TTL) или ещё не долетела.
+     */
+    fun decryptImageFromMessage(context: Context, msgId: String, envJson: String): String? {
+        return try {
+            val env = jsonToEnvelope(envJson) ?: return null
+            val plain = CryptoBox.decrypt(env, msgId, image = true)
+            val mime = guessMime(plain)
+            val b64 = Base64.encodeToString(plain, Base64.NO_WRAP)
+            // Сохраняем в кэш — при следующем bind превью возьмётся с диска
+            // без повторной асимметричной операции.
+            com.example.fess.kotlinmassage1.util.ImageCache.putFromBase64(context, msgId, "data:$mime;base64,$b64")
+            "data:$mime;base64,$b64"
+        } catch (e: Exception) {
+            Log.w(TAG, "decryptImageFromMessage($msgId) failed: ${e.message}")
+            null
+        }
     }
 
     /**
