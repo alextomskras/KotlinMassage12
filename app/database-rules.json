@@ -3,7 +3,16 @@
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && auth.uid === $uid",
+        "publicKey": {
+          ".read": "auth != null"
+        },
+        "keyFingerprint": {
+          ".read": "auth != null"
+        },
+        "keyCreatedAt": {
+          ".read": "auth != null"
+        }
       }
     },
     "user-messages": {
@@ -35,6 +44,12 @@
       "$msgId": {
         ".read": "auth != null && auth.token.admin === true",
         ".write": "auth != null && auth.uid === data.child('fromId').val()"
+      }
+    },
+    "transfers": {
+      "$msgId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     }
   }

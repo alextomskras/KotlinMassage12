@@ -11,6 +11,7 @@ import android.util.Log
 import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
+import com.example.fess.kotlinmassage1.util.KeyManager
 import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessaging
@@ -68,6 +69,10 @@ class LoginActivity : AppCompatActivity() {
 
                     // Юзер залогинен — прописываем его токен в БД по схеме user-tokens/{uid}/{deviceId}
                     TokenStore.saveCurrentToken(this)
+
+                    // E2EE: убеждаемся, что ключевая пара есть и pubkey опубликован (см. docs/ENCRYPTION_CONCEPT.md)
+                    KeyManager.init(this)
+                    KeyManager.ensureKeys { }
 
                     val intent = Intent(this, LatestMessagesActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)

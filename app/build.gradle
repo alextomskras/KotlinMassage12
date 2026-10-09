@@ -67,4 +67,7 @@ dependencies {
     // (fileTree ниже), его ViewHolder.itemView package-private -> IllegalAccessError на телефоне.
     // Такие jar нужно удалить из app/libs/, иначе шим игнорируется рантаймом.
     implementation 'com.squareup.picasso:picasso:2.8'
+
+    // E2EE: X25519 (ECDH) для KeyManager/CryptoBox — см. docs/ENCRYPTION_CONCEPT.md
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
 }

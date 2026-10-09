@@ -15,6 +15,7 @@ import android.widget.Toast
 import com.example.fess.kotlinmassage1.R
 import com.example.fess.kotlinmassage1.messages.LatestMessagesActivity
 import com.example.fess.kotlinmassage1.models.User
+import com.example.fess.kotlinmassage1.util.KeyManager
 import com.example.fess.kotlinmassage1.util.TokenStore
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
@@ -120,6 +121,10 @@ class RegisterActivity : AppCompatActivity() {
 
                     // Сохраняем FCM-токен нового юзера по схеме /user-tokens/{uid}/{deviceId}
                     TokenStore.saveCurrentToken(this)
+
+                    // E2EE: генерация X25519-пары и публикация pubkey в /users/{uid}/publicKey
+                    KeyManager.init(this)
+                    KeyManager.ensureKeys { }
 
                     val intent = Intent(this, LatestMessagesActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK.or(Intent.FLAG_ACTIVITY_NEW_TASK)
