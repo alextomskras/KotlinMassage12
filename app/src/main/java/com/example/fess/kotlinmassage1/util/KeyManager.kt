@@ -65,7 +65,7 @@ object KeyManager {
             val priv = getOrCreatePrivateKey()
             val pub = publicKeyOf(priv)
             publishPublicKey(pub) {
-                onDone(encodeBase64(pub.encoded))
+                onDone(encodeBase64(pub.getEncoded()))
             }
         } catch (e: Exception) {
             Log.e(TAG, "ensureKeys failed", e)
@@ -91,13 +91,13 @@ object KeyManager {
     fun getPublicKey(): X25519PublicKeyParameters = publicKeyOf(getPrivateKey())
 
     /** base64(NO_WRAP) публичного ключа — то, что лежит в /users/{uid}/publicKey. */
-    fun publicKeyBase64(): String = encodeBase64(getPublicKey().encoded)
+    fun publicKeyBase64(): String = encodeBase64(getPublicKey().getEncoded())
 
     /**
      * Короткий отпечаток для ручной верификации (TOFU): первые 6 байт SHA-256,
      * попарно в hex, напр. "a1b2.c3d4.e5f6".
      */
-    fun fingerprint(pub: ByteArray = getPublicKey().encoded): String {
+    fun fingerprint(pub: ByteArray = getPublicKey().getEncoded()): String {
         val d = MessageDigest.getInstance("SHA-256").digest(pub).copyOfRange(0, 6)
         return d.joinToString(".") { "%02x".format(it) }
     }
@@ -147,11 +147,11 @@ object KeyManager {
             gen.init(X25519KeyGenerationParameters(SecureRandom()))
             val pair = gen.generateKeyPair()
             val priv = pair.private as X25519PrivateKeyParameters
-            val wrapped = wrap(priv.encoded)
+            val wrapped = wrap(priv.getEncoded())
             atomicWrite(wrappedFile(), wrapped)
-            atomicWrite(pubFile(), pair.public.encoded)
+            atomicWrite(pubFile(), pair.public.getEncoded())
             cachedPriv = priv
-            Log.i(TAG, "X25519 keypair generated, fingerprint=${fingerprint(pair.public.encoded)}")
+            Log.i(TAG, "X25519 keypair generated, fingerprint=${fingerprint(pair.public.getEncoded())}")
             return priv
         }
     }
@@ -174,7 +174,7 @@ object KeyManager {
             done()
             return
         }
-        val b64 = encodeBase64(pub.encoded)
+        val b64 = encodeBase64(pub.getEncoded())
         val usersRef = FirebaseDatabase.getInstance().getReference(DbPaths.user(uid))
         usersRef.child("publicKey").get().addOnSuccessListener { snap ->
             val existing = snap.value as? String
@@ -184,7 +184,7 @@ object KeyManager {
                 Log.e(TAG, "publicKey mismatch in DB for $uid — не перезаписываем, чинить вручную")
                 done()
             } else {
-                val fp = fingerprint(pub.encoded)
+                val fp = fingerprint(pub.getEncoded())
                 usersRef.updateChildren(
                     mapOf(
                         "publicKey" to b64,

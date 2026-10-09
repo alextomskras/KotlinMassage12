@@ -42,7 +42,7 @@ object CryptoBox {
         val ct = aesGcm(Cipher.ENCRYPT_MODE, key, iv, payload)
         return Envelope(
             encB64 = KeyManager.encodeBase64(ct),
-            epkB64 = KeyManager.encodeBase64(epub.encoded)
+            epkB64 = KeyManager.encodeBase64(epub.getEncoded())
         )
     }
 
