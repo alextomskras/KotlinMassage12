@@ -81,7 +81,45 @@ object CryptoBox {
             ?: throw IllegalArgumentException("bad epk base64")
         val cipherData = KeyManager.decodeBase64(encl.encB64)
             ?: throw IllegalArgumentException("bad enc base64")
+        // Ключевая ошибка прошлой реализации: sender-конверт шифровался как
+        // ECDH(ephemeral_priv, pub_sender), т.е. shared зависит от ЭФЕМЕРИДЫ,
+        // которую никто не сохраняет. Дешифровка «своим приватником против
+        // epk=pub_sender» даёт ДРУГОЙ shared secret — AES-GCM tag никогда не
+        // сходился, и отправитель вечно видел заглушку. Правильный путь для
+        // картинок — selfless-конверт (encryptSelfless/decryptSelfless).
         val shared = KeyManager.sharedSecret(KeyManager.getPrivateKey(), X25519PublicKeyParameters(epkBytes, 0))
+        val (key, iv) = hkdf(shared, msgId, if (image) HKDF_INFO_IMG else HKDF_INFO_TEXT)
+        return aesGcm(Cipher.DECRYPT_MODE, key, iv, cipherData)
+    }
+
+    /**
+     * Конверт «сам себе»: симметричный ключ выводится из собственного static
+     * приватника + msgId (HKDF без DH-партнёра). Только владелец приватника
+     * может вывести тот же ключ — с точки зрения третьих лиц это так же
+     * непрозрачно, что и обычный конверт, но расшифровать может ТОЛЬКО сам
+     * отправитель. Именно так хранится зеркало картинки в msg.env: картинка
+     * физически не может быть зашифрована «в оба конца одним телом», поэтому
+     * relay-нода несёт receiver-конверт (эфемерида под pubkey получателя), а
+     * msg.env — selfless-конверт того же тела.
+     */
+    fun encryptSelfless(payload: ByteArray, msgId: String, image: Boolean): Envelope {
+        val privEnc = KeyManager.getPrivateKey().getEncoded()
+        val shared = MessageDigest.getInstance("SHA-256").digest(privEnc)
+        val (key, iv) = hkdf(shared, msgId, if (image) HKDF_INFO_IMG else HKDF_INFO_TEXT)
+        val ct = aesGcm(Cipher.ENCRYPT_MODE, key, iv, payload)
+        return Envelope(
+            encB64 = KeyManager.encodeBase64(ct),
+            // маркер selfless-пути вместо чужого epk; на дешифровке не участвует
+            epkB64 = KeyManager.encodeBase64("SELF".toByteArray(Charsets.UTF_8))
+        )
+    }
+
+    /** Дешифровка selfless-конверта (см. encryptSelfless). Бросает исключение при неверном ключе. */
+    fun decryptSelfless(encl: Envelope, msgId: String, image: Boolean): ByteArray {
+        val cipherData = KeyManager.decodeBase64(encl.encB64)
+            ?: throw IllegalArgumentException("bad enc base64")
+        val privEnc = KeyManager.getPrivateKey().getEncoded()
+        val shared = MessageDigest.getInstance("SHA-256").digest(privEnc)
         val (key, iv) = hkdf(shared, msgId, if (image) HKDF_INFO_IMG else HKDF_INFO_TEXT)
         return aesGcm(Cipher.DECRYPT_MODE, key, iv, cipherData)
     }

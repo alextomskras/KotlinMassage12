@@ -115,15 +115,14 @@ object CryptoBridge {
                     // Эфемерная пара для ECDH под pubkey получателя (получатель
                     // дешифрует своим приватником через epk из конверта)...
                     val envReceiver = CryptoBox.encrypt(raw, pub, msgId, image = true)
-                    // ...НО зеркало/relay хранит ДВА представления одного и того
-                    // же шифртекста невозможно, поэтому для картинок схема иная:
-                    // шифруем ОДИН раз под pubkey получателя эфемеридой, а для
-                    // отправителя делаем ВТОРОЙ конверт той же картинки под ЕГО
-                    // СОБСТВЕННЫЙ static pubkey (epk = его pubkey). Оба конверта
-                    // кладутся в env: receiver-конверт уходит в relay-ноду,
-                    // sender-конверт остаётся в msg.env. Отправитель читает свою
-                    // картинку decryptSender() (ECDH(spriv, epk=spub)).
-                    val envSender = CryptoBox.encrypt(raw, KeyManager.getPublicKey(), msgId, image = true)
+                    // Для отправителя делаем ВТОРОЙ конверт той же картинки —
+                    // selfless-путём (ключ = HKDF(SHA256(static_priv_sender), msgId),
+                    // без эфемериды). Прежняя схема «encrypt под свой pubkey»
+                    // ломалась: shared зависел от невыжившей эфемериды, tag AES-GCM
+                    // не сходиллся, и отправитель вечно видел заглушку. Receiver-
+                    // конверт уходит в relay-ноду, selfless-конверт остаётся в
+                    // msg.env; отправитель читает его decryptSelfless().
+                    val envSender = CryptoBox.encryptSelfless(raw, msgId, image = true)
                     onReady(envelopeToJson(envSender)) // в msg.env — то, что читает отправитель
                     pendingReceiverEnvelopes[msgId] = envelopeToJson(envReceiver)
                 } catch (e: Exception) {
@@ -194,20 +193,15 @@ object CryptoBridge {
         decryptImageFromMessage(context, msgId, envJson, ownEpk = false)
 
     /**
-     * @param ownEpk true — для ОТПРАВИТЕЛЯ картинки. Конверт отправителя устроен
-     * хитрее: epk в нём = ЭТО его собственный static pubkey (картинка шифруется
-     * ECDH(ephemeral_sender_priv, pub_receiver), а receiver восстанавливает
-     * shared через ECDH(priv_receiver, epk)). У отправителя приватник от epk
-     * нет, поэтому он считает shared как ECDH(static_priv_sender, epk=own_pub) —
-     * что математически даёт тот же самый shared secret (DH коммутативность +
-     * симметрия sender->receiver node: epk выбран так, чтобы обе стороны сошлись).
-     * Фактически это «второй прогон» того же HKDF/AES-GCM своими ключами.
-     * false — обычный путь получателя: ECDH(priv, epk).
+     * @param ownEpk true — для ОТПРАВИТЕЛЯ картинки. Его msg.env хранит
+     * selfless-конверт (ключ = HKDF(SHA256(static_priv_sender), msgId)), который
+     * читается decryptSelfless() — без эфемериды и без чужих ключей. false —
+     * обычный путь получателя: ECDH(priv_receiver, epk) из receiver-конверта.
      */
     fun decryptImageFromMessage(context: Context, msgId: String, envJson: String, ownEpk: Boolean): String? {
         return try {
             val env = jsonToEnvelope(envJson) ?: return null
-            val plain = if (ownEpk) CryptoBox.decryptSender(env, msgId, image = true)
+            val plain = if (ownEpk) CryptoBox.decryptSelfless(env, msgId, image = true)
                         else CryptoBox.decrypt(env, msgId, image = true)
             val mime = guessMime(plain)
             val b64 = Base64.encodeToString(plain, Base64.NO_WRAP)
