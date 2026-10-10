@@ -165,6 +165,7 @@ class TextItem(
         if (deleted) {
             viewHolder.itemView.findViewById<TextView>(textId).text = DELETED_LABEL
             viewHolder.itemView.findViewById<TextView>(timeId).text = time
+            if (!isIncoming) applyTick(viewHolder)
         } else if (!isIncoming) {
             // Исходящее E2EE: показываем ЧИТАЕМЫЙ текст (plaintext или selfless-
             // зеркало из env). Раньше здесь был вызов decryptText эфемерным путём —
@@ -174,37 +175,33 @@ class TextItem(
             viewHolder.itemView.findViewById<TextView>(textId).text = plain ?: DECRYPT_FAIL_LABEL
             viewHolder.itemView.findViewById<TextView>(timeId).text =
                 time + if (editTime > 0) " · изменено" else ""
+            applyTick(viewHolder)
         } else {
-        // Входящее: эфемерный конверт из text читается НАШИМ static-приватником
-        // (ECDH с epk). Исходящее: эфемерида отправителем не сохраняется и чужим
-        // ключом не расшифровывается — читаем selfless-зеркало из env своим же
-        // приватником; если зеркала нет (старое сообщение до фикса), показывать
-        // нечего (в text лежит base64 шифра) — честная заглушка.
-        val shown = if (isIncoming) {
-            com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)
-                ?: "🔒 Нет доступа к сообщению"
-        } else {
-            envMirror?.let {
-                com.example.fess.kotlinmassage1.util.CryptoBridge.decryptTextFromEnv(msgId, it)
-            } ?: "🔒 Нет доступа к сообщению"
-        }
-        viewHolder.itemView.findViewById<TextView>(textId).text = shown
-        viewHolder.itemView.findViewById<TextView>(timeId).text =
-            time + if (editTime > 0) " · изменено" else ""
+            // Входящее: эфемерный конверт из text читается НАШИМ static-приватником
+            // (ECDH с epk). Если сообщение правилось — в editedText лежит свежий
+            // конверт под тем же msgId (тот же AAD), шифруем от него же.
+            val shown = com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)
+                ?: DECRYPT_FAIL_LABEL
+            viewHolder.itemView.findViewById<TextView>(textId).text = shown
+            viewHolder.itemView.findViewById<TextView>(timeId).text =
+                time + if (editTime > 0) " · изменено" else ""
         }
         ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
-        // Галочки статуса есть только в исходящем layout.
-        if (!isIncoming) {
-            val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status)
-            if (tick != null) {
-                if (readAt > 0) {
-                    tick.setImageResource(R.drawable.ic_check_double)
-                    tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
-                } else {
-                    tick.setImageResource(R.drawable.ic_check_single)
-                    tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
-                }
-            }
+    }
+
+    /**
+     * Галочки статуса исходящего сообщения: одна серая — отправлено,
+     * две синие — прочтено собеседником. В входящем layout их нет — findViewById
+     * вернёт null, вызов безопасен с любой ветки.
+     */
+    private fun applyTick(viewHolder: RecyclerView.ViewHolder) {
+        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status) ?: return
+        if (readAt > 0) {
+            tick.setImageResource(R.drawable.ic_check_double)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
+        } else {
+            tick.setImageResource(R.drawable.ic_check_single)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
         }
     }
 

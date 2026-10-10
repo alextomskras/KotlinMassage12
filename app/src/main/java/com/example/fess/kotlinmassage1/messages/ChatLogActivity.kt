@@ -515,7 +515,7 @@ class ChatLogActivity : AppCompatActivity() {
             onReady = { envelopeB64 ->
                 // encryptTextForSend уже положил свежее selfless-зеркало в кэш —
                 // забираем его для поля envEdited (нужно, чтобы самому видеть правку).
-                val mirror = CryptoBridge.peekTextMirror(newEnvId) ?: ""
+                val mirror = CryptoBridge.takeTextMirror(newEnvId) ?: ""
                 val ts = System.currentTimeMillis() / 1000
                 // ВАЖНО: у каждой стороны свой ключ узла (push-id при двойной записи).
                 // nodeKey — ключ В НАШЕМ зеркале; в зеркале собеседника ищем его узел
@@ -523,10 +523,15 @@ class ChatLogActivity : AppCompatActivity() {
                 val updates = mapOf<String, Any>(
                     "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editedText" to envelopeB64,
                     "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editTime" to ts,
+                    // envEdited пишем ВСЕГДА (даже ""), чтобы stale-зеркало оригинала
+                    // в msg.env не перекрывало новую правку при чтении.
                     "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/envEdited" to mirror
                 )
                 db.updateChildren(updates)
-                    .addOnSuccessListener { syncEditToPartnerMirror(mirrorMsgId, envelopeB64, ts) }
+                    .addOnSuccessListener {
+                        CryptoBridge.confirmTextEdit(newEnvId, nodeKey)
+                        syncEditToPartnerMirror(mirrorMsgId, envelopeB64, ts)
+                    }
                     .addOnFailureListener { e ->
                         Toast.makeText(this, "Правка не сохранена: ${e.message}", Toast.LENGTH_SHORT).show()
                     }

@@ -361,6 +361,16 @@ object CryptoBridge {
         null
     }
 
+    /**
+     * Подтверждение успешной ПРАВКИ: убираем временное selfless-зеркало из
+     * pending-кэша. Зеркало кладёт encryptTextForSend (под newEnvId), запись
+     * правки идёт в два зеркала — чистим оба id.
+     */
+    fun confirmTextEdit(newEnvId: String, nodeKey: String) {
+        pendingTextMirrors.remove(newEnvId)
+        pendingTextMirrors.remove(nodeKey)
+    }
+
     /** Определяет mime по сигнатуре декодированных байт (webp/jpg/png). */
     private fun guessMime(bytes: ByteArray): String = when {
         bytes.size > 12 && String(bytes, 0, 4) == "RIFF" && String(bytes, 8, 4) == "WEBP" -> "image/webp"
