@@ -26,4 +26,5 @@
     <!-- Текст строк списка чатов / выбора собеседника. -->
     <color name="list_primary_text">#202124</color>
     <color name="list_secondary_text">#3C4043</color>
+    <color name="reply_quote_bg">#F1F3F4</color>
 </resources>
