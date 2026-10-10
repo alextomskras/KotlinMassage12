@@ -217,7 +217,13 @@ class ChatLogActivity : AppCompatActivity() {
                 // автор пишет с readAt=0 в копию собеседника (см. writeMessageToDb),
                 // legacy-записи поля не имеют -> их НЕ трогаем (без реворка).
                 if (isIncoming && chatMessage.readAt == 0L) {
-                    markIncomingAsRead(snapshotKey)
+                    // ВАЖНО: ключ берём ИЗ ПАРАМЕТРА onChildAdded, а не из общего
+                    // поля snapshotKey. Поле перезаписывается асинхронными
+                    // колбэками загрузки картинок (ImageLoader пишет receipt по
+                    // своему msgId) — раньше это приводило к тому, что readAt
+                    // уходил в ЧУЖОЙ узел, у нашего узла поле так и оставалось
+                    // 0, а у отправителя галочка навечно серела.
+                    markIncomingAsRead(p0.key ?: snapshotKey)
                 }
             }
 
@@ -273,6 +279,19 @@ class ChatLogActivity : AppCompatActivity() {
         // сравнивает readAt каждого узла с тем, что уже отрисовано.
         val tracker = object : ValueEventListener {
             override fun onDataChange(p0: DataSnapshot) {
+                // Пропускаем «первую» полную выгрузку, пока чат ещё пустой:
+                // ValueEventListener приходит раньше, чем onChildAdded основного
+                // слушателя достроит строки. Иначе applyReadFromMirror для узлов
+                // с readAt=0 не находит строк и пишет ПОТОК receipt в узел автора
+                // (/user-messages/{sender}/{me}/{msgId}) — а правила RTDB
+                // запрещают нам запись в чужие узлы ("auth.uid === $myUid").
+                // Полученный Permission denied снимал ВСЕ слушатели с корня
+                // reference (штатный Firebase при отклонённой записи отключает
+                // listeners по всему дереву) — именно поэтому галочки у
+                // отправителя никогда не перекрашивались, хотя сообщения
+                // приходили. При повторных onValueEvent список уже наполнен,
+                // ложные записи не происходят.
+                if (adapter.itemCount == 0) return
                 for (c in p0.children) applyReadFromMirror(c)
             }
             override fun onCancelled(p0: DatabaseError) {
@@ -319,7 +338,27 @@ class ChatLogActivity : AppCompatActivity() {
         if (byMsg != null && byMsg.second.readAt <= 0) {
             byMsg.second.readAt = readValue
             adapter.updateAt(byMsg.first)
+            return
         }
+        // Совпадение по msgId нашлось, но значение <= 0 — это маркер «не
+        // прочитано» из копии автора (пишет отправитель). НИЧЕГО не делаем:
+        // раньше отсюда улетала запись receipt в узел автора, правила RTDB
+        // её отклоняли (Permission denied), и Firebase снимал ВСЕ слушатели
+        // — галочки у отправителя навсегда оставались серыми. Пишем receipt
+        // только когда поле явно > 0 (получатель отметил прочтение в своём
+        // зеркале, автор продублировал его в нашу копию).
+        if (byMsg != null) return
+        // Ключа нет ни в одном живом узле — значит это legacy-сообщение без
+        // поля readAt в нашей копии, а получатель уже поставил receipt в свою
+        // копию. Продублируем его в НАШУ копию (/user-messages/{me}/{partner}/
+        // {key}) — туда нам писать разрешено; на этом receipt сходится,
+        // повторных записей больше не будет.
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        FirebaseDatabase.getInstance().reference
+            .child("${DbPaths.conversation(myUid, otherUid)}/$key/readAt")
+            .setValue(readValue)
+            .addOnFailureListener { e -> Log.w(TAG, "receipt mirror write failed: ${e.message}") }
     }
 
     /** Точечное обновление живой строки по изменению её узла в зеркале автора. */
