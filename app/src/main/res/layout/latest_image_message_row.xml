@@ -25,7 +25,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginLeft="16dp"
-        android:textColor="@android:color/black"
+        android:textColor="@color/list_primary_text"
         android:textSize="16sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toTopOf="@+id/kartinka_imageview_latest_message"
@@ -62,7 +62,7 @@
         android:maxWidth="240dp"
 
         android:scaleType="fitCenter"
-        android:textColor="@android:color/black"
+        android:textColor="@color/list_primary_text"
         android:textSize="18sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

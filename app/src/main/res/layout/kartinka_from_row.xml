@@ -63,6 +63,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="8dp"
         android:text="2.10.2018"
+        android:textColor="@color/time_text"
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="@+id/kartinka_chat_from_row2"

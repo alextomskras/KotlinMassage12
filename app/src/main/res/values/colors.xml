@@ -20,4 +20,10 @@
     <color name="reply_accent">#2196F3</color>
     <color name="swipe_image_background">#607D8B</color>
     <color name="reply_quote_text">#5F6B76</color>
+    <!-- Даты/время под пузырями: раньше были без textColor и в тёмной теме
+     сливались с чёрным фоном (наследовали белый текст темы). -->
+    <color name="time_text">#616161</color>
+    <!-- Текст строк списка чатов / выбора собеседника. -->
+    <color name="list_primary_text">#202124</color>
+    <color name="list_secondary_text">#3C4043</color>
 </resources>
