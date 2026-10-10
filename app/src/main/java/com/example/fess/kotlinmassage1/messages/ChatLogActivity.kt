@@ -90,7 +90,8 @@ class ChatLogActivity : AppCompatActivity() {
         listenForMessages()
 
         // Долгое нажатие на СВОЁ текстовое сообщение -> «Изменить / Удалить для всех».
-        adapter.onItemLongClickListener = { _, item ->
+        // Подпись колбэка: (Int позиция, ChatRowDelegate) -> Boolean — см. ChatRecyclerAdapter.
+        adapter.onItemLongClickListener = { _: Int, item: com.example.fess.kotlinmassage1.views.ChatRowDelegate ->
             val mine = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
                 (item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) ||
                 (item is com.example.fess.kotlinmassage1.views.KartinkaFromItem)
