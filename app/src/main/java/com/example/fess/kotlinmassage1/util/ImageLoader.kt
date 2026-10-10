@@ -274,7 +274,27 @@ object ImageLoader {
 
     /** Аватар: Picasso сам грузит асинхронно; режем превью, чтобы не тянуть полноразмер. */
     fun loadAvatarInto(url: String?, target: de.hdodenhof.circleimageview.CircleImageView) {
-        if (url.isNullOrEmpty()) return
-        Picasso.get().load(url).resize(160, 160).centerCrop().into(target)
+        // Серый круг сразу (placeholder) и при ошибке сети (error) — без «дырок»
+        // и лаунчер-иконки в списке диалогов (пункт 12: индикатор загрузки).
+        if (url.isNullOrEmpty()) {
+            target.setImageResource(R.drawable.avatar_placeholder)
+            return
+        }
+        Picasso.get().load(url)
+            .placeholder(R.drawable.avatar_placeholder)
+            .error(R.drawable.avatar_placeholder)
+            .resize(160, 160).centerCrop().into(target)
+    }
+
+    /** URL-картинка в ImageView с placeholder/error (legacy firebasestorage-ссылки). */
+    fun loadUrlToView(url: String?, target: android.widget.ImageView) {
+        if (url.isNullOrEmpty()) {
+            target.setImageResource(R.drawable.image_placeholder)
+            return
+        }
+        Picasso.get().load(url)
+            .placeholder(R.drawable.image_placeholder)
+            .error(R.drawable.image_expired)
+            .into(target)
     }
 }

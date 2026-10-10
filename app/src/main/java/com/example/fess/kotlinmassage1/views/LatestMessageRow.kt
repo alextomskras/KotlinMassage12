@@ -9,7 +9,6 @@ import com.example.fess.kotlinmassage1.models.User
 import com.example.fess.kotlinmassage1.util.ImageLoader
 import com.example.fess.kotlinmassage1.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
-import com.squareup.picasso.Picasso
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,7 +98,7 @@ class LatestKartinkaMessageRow(val chatMessage: ChatMessage) : ChatRowDelegate, 
                     ImageLoader.loadBase64ToView(chatMessage.text, image, maxSide = 300)
                 else ->
                     // обратная совместимость со старыми URL из Firebase Storage
-                    Picasso.get().load(chatMessage.text).into(image)
+                    ImageLoader.loadUrlToView(chatMessage.text, image)
             }
         } else {
             previewText.text = chatMessage.text.take(80)
