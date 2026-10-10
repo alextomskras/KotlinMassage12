@@ -34,6 +34,12 @@
                 android:value=".messages.LatestMessagesActivity" />
         </activity>
 
+        <!-- Полноэкранный просмотр картинки чата с hero-переходом (пункт 11). -->
+        <activity
+            android:name=".util.FullscreenImageActivity"
+            android:theme="@style/Theme.FullscreenImage"
+            android:exported="false" />
+
         <!--FCM-->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
