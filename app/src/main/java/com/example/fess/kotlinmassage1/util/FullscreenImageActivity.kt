@@ -49,12 +49,19 @@ class FullscreenImageActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_fullscreen_image)
 
-        // На Android 9 и ниже shared-element работает только при включённых activity transitions.
+        // У Window нет свойств sharedElementsEnterTransition/sharedElementsExitTransition
+        // (отсюда Unresolved reference). Shared-element'ы анимируются штатными переходами
+        // окна: AutoTransition (включает ChangeTransform — масштаб/позицию hero-картинки)
+        // плюс Fade для появления остального контента.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.sharedElementsEnterTransition = android.transition.ChangeTransform()
-                .setDuration(300)
-            window.sharedElementsExitTransition = android.transition.ChangeTransform()
-                .setDuration(250)
+            window.enterTransition = android.transition.AutoTransition().apply {
+                duration = 300
+                addTransition(android.transition.Fade())
+            }
+            window.returnTransition = android.transition.AutoTransition().apply {
+                duration = 250
+                addTransition(android.transition.Fade())
+            }
         }
 
         val scrim = findViewById<View>(R.id.fullscreen_scrim)
