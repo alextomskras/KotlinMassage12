@@ -243,7 +243,10 @@ class ChatLogActivity : AppCompatActivity() {
         // Храним последние 500 пар, чтобы prefs не разрастались.
         val entries = mirrorKeys.entries.toList()
         val trimmed = if (entries.size > 500) entries.takeLast(500) else entries
-        mirrorKeys.clear(); mirrorKeys.putAll(trimmed)
+        // putAll ждёт Map, а у нас List<Entry> — пересобираем в LinkedHashMap.
+        val trimmedMap = LinkedHashMap<String, String>(trimmed.size)
+        for ((k, v) in trimmed) trimmedMap[k] = v
+        mirrorKeys.clear(); mirrorKeys.putAll(trimmedMap)
         getSharedPreferences("chat_status", MODE_PRIVATE).edit()
             .putString("mirror_keys_$uid", trimmed.joinToString("\n") { "${it.key}=${it.value}" })
             .apply()
