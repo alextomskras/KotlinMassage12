@@ -19,6 +19,7 @@ import com.example.fess.kotlinmassage1.util.TokenStore
 import com.example.fess.kotlinmassage1.views.DialogItem
 import com.example.fess.kotlinmassage1.views.LatestKartinkaMessageRow
 import com.example.fess.kotlinmassage1.views.LatestMessageRow
+import com.example.fess.kotlinmassage1.views.SkeletonAdapter
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
@@ -46,6 +47,9 @@ class LatestMessagesActivity : AppCompatActivity() {
     private var latestListener: ChildEventListener? = null
     private var latestRef: DatabaseReference? = null
 
+    /** Оверлей shimmer-скелетонов (пункт 12): виден, пока список пуст. */
+    private var skeletonRecycler: RecyclerView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_latest_messages)
@@ -56,6 +60,8 @@ class LatestMessagesActivity : AppCompatActivity() {
         // строкам нужен контекст для локального кэша картинок (ImageCache)
         adapter.rowContextProvider = { this }
         recycler.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
+
+        setupListSkeleton()
 
         // Раньше здесь был жёсткий cast `item as LatestKartinkaMessageRow` — краш, когда
         // в списке попадался текстовый диалог. Теперь общий интерфейс DialogItem.
@@ -78,6 +84,24 @@ class LatestMessagesActivity : AppCompatActivity() {
         verifyUserIsLoggedIn()
     }
 
+    /**
+     * Индикатор загрузки списка чатов (пункт 12): пока Firebase не прислал ни
+     * одного диалога, поверх пустого recyclers виден оверлей с shimmer-скелетонами.
+     * Отдельный RecyclerView выбран вместо встраивания skeleton-типов в
+     * ChatRecyclerAdapter: у того getItemViewType == позиция и асинхронные
+     * колбэки по позициям — примешивать туда временные строки было бы рискованно.
+     */
+    private fun setupListSkeleton() {
+        val skeleton = findViewById<RecyclerView>(R.id.recyclerview_latest_skeleton)
+        skeleton.adapter = SkeletonAdapter()
+        skeletonRecycler = skeleton
+    }
+
+    /** Прячет скелетоны; повторный вызов безопасен. Анимация бликов гасится вместе с visibility. */
+    private fun hideListSkeleton() {
+        skeletonRecycler?.visibility = android.view.View.GONE
+    }
+
     private fun refreshRecyclerViewMessages() {
         val items: List<com.example.fess.kotlinmassage1.views.ChatRowDelegate> =
             latestMessagesMap.values.map { msg ->
@@ -85,6 +109,8 @@ class LatestMessagesActivity : AppCompatActivity() {
                 else LatestMessageRow(msg)
             }
         adapter.submit(items)
+        // Первые данные пришли — индикатор загрузки больше не нужен.
+        if (items.isNotEmpty()) hideListSkeleton()
     }
 
     private fun listenForLatestMessages() {
@@ -174,6 +200,8 @@ class LatestMessagesActivity : AppCompatActivity() {
         if (listener != null) latestRef?.removeEventListener(listener)
         latestListener = null
         latestRef = null
+        skeletonRecycler?.adapter = null
+        skeletonRecycler = null
         super.onDestroy()
     }
 }

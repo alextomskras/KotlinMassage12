@@ -15,4 +15,22 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
+
+    <!--
+      Индикатор загрузки (пункт 12): shimmer-скелетоны поверх пустого списка,
+      пока Firebase не прислал первые диалоги. Перекрывает основной recycler
+      и скрывается в hideListSkeleton() — см. LatestMessagesActivity.
+    -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerview_latest_skeleton"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@android:color/white"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

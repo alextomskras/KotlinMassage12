@@ -93,7 +93,10 @@ class UserItem(val user: User) : ChatRowDelegate {
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
         viewHolder.itemView.findViewById<android.widget.TextView>(R.id.username_textview_new_message).text = user.username
 
-        Picasso.get().load(user.profileImageUrl).into(viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(R.id.imageview_new_message))
+        Picasso.get().load(user.profileImageUrl)
+            .placeholder(R.drawable.avatar_placeholder)
+            .error(R.drawable.avatar_placeholder)
+            .into(viewHolder.itemView.findViewById<de.hdodenhof.circleimageview.CircleImageView>(R.id.imageview_new_message))
     }
 }
 

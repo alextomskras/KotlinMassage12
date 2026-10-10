@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Атрибуты ShimmerConstraintLayout (views/ShimmerView.kt): настройка блика скелетонов. -->
+<resources>
+    <declare-styleable name="ShimmerConstraintLayout">
+        <attr name="shimmer_base_color" format="color" />
+        <attr name="shimmer_highlight_color" format="color" />
+        <!-- Ширина бегущей полосы блика как доля ширины контейнера (float 0..1) -->
+        <attr name="shimmer_band_width_fraction" format="float" />
+        <!-- Длительность одного прохода блика, мс -->
+        <attr name="shimmer_duration_ms" format="integer" />
+        <!-- Пульсация альфы блика (0 -> max -> 0). false => равномерный блик без затухания -->
+        <attr name="shimmer_auto_alpha" format="boolean" />
+    </declare-styleable>
+</resources>

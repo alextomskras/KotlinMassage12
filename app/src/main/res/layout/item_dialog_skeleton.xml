@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Скелетон текстового диалога (замена latest_message_row на время загрузки).
+  Корень — ShimmerConstraintLayout (views/ShimmerView.kt): id/geometry child-ов
+  совпадают с реальным рядом, поэтому переход skeleton->данные визуально плавный.
+-->
+<com.example.fess.kotlinmassage1.views.ShimmerConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="120dp">
+
+    <View
+        android:id="@+id/skeleton_avatar"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginLeft="24dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/avatar_placeholder"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <View
+        android:id="@+id/skeleton_username"
+        android:layout_width="160dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginLeft="16dp"
+        android:background="@drawable/image_placeholder"
+        app:layout_constraintBottom_toTopOf="@+id/skeleton_message"
+        app:layout_constraintStart_toEndOf="@+id/skeleton_avatar"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed" />
+
+    <View
+        android:id="@+id/skeleton_message"
+        android:layout_width="0dp"
+        android:layout_height="18dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginLeft="16dp"
+        android:layout_marginTop="10dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginRight="16dp"
+        android:background="@drawable/image_placeholder"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/skeleton_avatar"
+        app:layout_constraintTop_toBottomOf="@+id/skeleton_username" />
+</com.example.fess.kotlinmassage1.views.ShimmerConstraintLayout>
