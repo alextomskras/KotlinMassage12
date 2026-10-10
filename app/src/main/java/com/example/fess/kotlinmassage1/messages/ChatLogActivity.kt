@@ -210,34 +210,7 @@ class ChatLogActivity : AppCompatActivity() {
                 // Soft-delete / редактирование / readAt приходят как change узла
                 snapshotKey = p0.key ?: ""
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
-                val pos = adapter.findRowPosition(p0.key ?: "")
-                if (pos < 0) return
-                // Точечно обновляем живые свойства строки (без полной пересборки):
-                when (val item = adapter.itemAt(pos)) {
-                    is com.example.fess.kotlinmassage1.views.ChatFromItem -> {
-                        item.readAt = chatMessage.readAt
-                        item.editTime = chatMessage.editTime
-                        item.editedText = chatMessage.editedText
-                        item.envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env
-                        item.deleted = chatMessage.deleted
-                    }
-                    is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> {
-                        item.readAt = chatMessage.readAt
-                        item.deleted = chatMessage.deleted
-                    }
-                    is com.example.fess.kotlinmassage1.views.KartinkaToItem -> {
-                        item.deleted = chatMessage.deleted
-                    }
-                    is com.example.fess.kotlinmassage1.views.ChatToItem -> {
-                        item.deleted = chatMessage.deleted
-                    }
-                    is com.example.fess.kotlinmassage1.views.TextItem -> {
-                        item.readAt = chatMessage.readAt
-                        item.editTime = chatMessage.editTime
-                        item.deleted = chatMessage.deleted
-                    }
-                }
-                adapter.updateAt(pos)
+                applyNodeChange(p0.key ?: "", chatMessage)
             }
             override fun onChildMoved(p0: DataSnapshot, p1: String?) {}
             override fun onChildRemoved(p0: DataSnapshot) {}
@@ -245,6 +218,103 @@ class ChatLogActivity : AppCompatActivity() {
         messagesListener = listener
         messagesRef = ref
         ref.addChildEventListener(listener)
+
+        // Отдельный read-tracker по НАШЕМУ зеркалу. Штатный listener выше
+        // слушает DbPaths.conversation(me, partner) — для исходящих это папка
+        // собеседника, а получатель пишет readAt в СВОЁ зеркало
+        // (/user-messages/{receiver}/{sender}/{mirrorKey}). Без этого трека
+        // изменение readAt у исходящего сообщения вообще не доходило до
+        // клиента отправителя: галочка навсегда оставалась одной серой.
+        startReadTracker(FirebaseAuth.getInstance().uid ?: return, toId)
+    }
+
+    /** Трекер readAt/readReceipt в нашем зеркале диалога. */
+    private var readTrackerRef: DatabaseReference? = null
+    private var readTracker: ChildEventListener? = null
+
+    private fun startReadTracker(myUid: String, otherUid: String) {
+        stopReadTracker()
+        val ref = FirebaseDatabase.getInstance().getReference(DbPaths.conversation(myUid, otherUid))
+        val tracker = object : ChildEventListener {
+            override fun onChildAdded(p0: DataSnapshot, p1: String?) = handleTrackedNode(p0)
+            override fun onChildChanged(p0: DataSnapshot, p1: String?) = handleTrackedNode(p0)
+            override fun onChildRemoved(p0: DataSnapshot) {}
+            override fun onChildMoved(p0: DataSnapshot, p1: String?) {}
+            override fun onCancelled(p0: DatabaseError) {
+                Log.w(TAG, "readTracker cancelled: ${p0.message}")
+            }
+        }
+        readTrackerRef = ref
+        readTracker = tracker
+        ref.addChildEventListener(tracker)
+    }
+
+    private fun stopReadTracker() {
+        readTracker?.let { t -> readTrackerRef?.removeEventListener(t) }
+        readTrackerRef = null
+        readTracker = null
+    }
+
+    /**
+     * Узел из нашего зеркала: если там есть readAt/readReceipt (>0), красим
+     * двойную синюю галочку у соответствующей исходящей строки. Строку ищем
+     * по dbId (ключ в нашем зеркале), затем по msgId (fallback).
+     */
+    private fun handleTrackedNode(p0: DataSnapshot) {
+        val key = p0.key ?: return
+        val readValue = (p0.child("readAt").getValue(Long::class.java)
+            ?: p0.child("readReceipt").getValue(Long::class.java)) ?: return
+        if (readValue <= 0) return
+        val pos = adapter.findRowPosition(key)
+        if (pos >= 0) {
+            when (val item = adapter.itemAt(pos)) {
+                is com.example.fess.kotlinmassage1.views.ChatFromItem ->
+                    if (item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                is com.example.fess.kotlinmassage1.views.TextItem ->
+                    if (!item.isIncomingForMenu() && item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
+                    if (item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                else -> {}
+            }
+            return
+        }
+        // fallback: ключ может совпадать с msgId (id в зеркале автора)
+        val byMsg = adapter.outgoingTextItems().firstOrNull { (_, d) -> d.msgId == key }
+        if (byMsg != null) {
+            byMsg.second.readAt = readValue
+            adapter.updateAt(byMsg.first)
+        }
+    }
+
+    /** Точечное обновление живой строки по изменению её узла в зеркале автора. */
+    private fun applyNodeChange(nodeKey: String, chatMessage: ChatMessage) {
+        val pos = adapter.findRowPosition(nodeKey)
+        if (pos < 0) return
+        when (val item = adapter.itemAt(pos)) {
+            is com.example.fess.kotlinmassage1.views.ChatFromItem -> {
+                if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                item.editTime = chatMessage.editTime
+                item.editedText = chatMessage.editedText
+                item.envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env
+                item.deleted = chatMessage.deleted
+            }
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> {
+                if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                item.deleted = chatMessage.deleted
+            }
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> {
+                item.deleted = chatMessage.deleted
+            }
+            is com.example.fess.kotlinmassage1.views.ChatToItem -> {
+                item.deleted = chatMessage.deleted
+            }
+            is com.example.fess.kotlinmassage1.views.TextItem -> {
+                if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                item.editTime = chatMessage.editTime
+                item.deleted = chatMessage.deleted
+            }
+        }
+        adapter.updateAt(pos)
     }
 
     private fun scrollToBottom() {
@@ -634,6 +704,7 @@ class ChatLogActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         // Снимаем слушателя — иначе активити утекает в Firebase навсегда
+        stopReadTracker()
         val listener = messagesListener
         if (listener != null) {
             messagesRef?.removeEventListener(listener)
