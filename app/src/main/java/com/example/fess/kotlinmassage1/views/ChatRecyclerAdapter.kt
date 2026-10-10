@@ -169,6 +169,12 @@ interface ChatRowDelegate {
     /** Открытый текст для long-press меню («Копировать»); null — копировать нечего. */
     fun plainTextForMenu(): String? = null
 
+    /** Текст строки (для превью цитаты при swipe reply). Пусто, если текста нет. */
+    fun rowText(): String = ""
+
+    /** id сообщения в зеркале автора (для transitionName/ключа цитаты). */
+    fun rowMsgId(): String = ""
+
     /** dbId строки (ключ узла в нашем зеркале) — для reply-карты. Пусто, если нет. */
     fun rowDbId(): String = ""
 }

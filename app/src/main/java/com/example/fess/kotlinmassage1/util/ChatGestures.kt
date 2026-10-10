@@ -30,13 +30,12 @@ class ChatSwipeCallback(
     ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
 ) {
 
-    /** RV запоминаем сами: protected-поля recyclerView у Callback нет (package-private). */
-    private var attachedRv: RecyclerView? = null
-
-    override fun attachToRecyclerView(recyclerView: RecyclerView?) {
-        super.attachToRecyclerView(recyclerView)
-        attachedRv = recyclerView
-    }
+    // ВАЖНО (реальный API recyclerview 1.3.2, проверено javap-ом):
+    //  - attachToRecyclerView НЕ open в Callback — переопределять нельзя;
+    //  - onDraw/onDrawOver — package-private с внутренней сигнатурой
+    //    (Canvas, RecyclerView, ViewHolder, List<RecoverAnimation>, int, float, float);
+    // поэтому подложка рисуется в PUBLIC onChildDraw(...) и доступ к RV
+    // берётся из vh.itemView.parent (поле protected mRecyclerView недоступно из Kotlin).
 
     private var replyBg: ColorDrawable? = null
     private var imageBg: ColorDrawable? = null
@@ -78,25 +77,46 @@ class ChatSwipeCallback(
         adapter?.notifyItemChanged(pos, PAYLOAD_SWIPE_REVERT)
     }
 
-    /** Подложка с иконкой под уезжающей строкой (без сторонних библиотек). */
-    override fun onDraw(
+    /**
+     * Подложка с иконкой под уезжающей строкой (без сторонних библиотек).
+     * Рисуем в public onChildDraw — именно он вызывается для каждой свайпнутой
+     * строки; package-private onDraw переопределить из Kotlin нельзя.
+     */
+    override fun onChildDraw(
         c: Canvas,
+        rv: RecyclerView,
         viewHolder: RecyclerView.ViewHolder,
         dX: Float,
         dY: Float,
         actionState: Int,
         isCurrentlyActive: Boolean
     ) {
-        // ВАЖНО: ItemTouchHelper.Callback.onDraw — package-private, super не вызываем.
-        if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) return
-        val rv = attachedRv ?: return
-        ensureMetrics(rv)
-        val bg = when {
-            dX > 0 -> replyDrawable(rv)
-            dX < 0 -> imageDrawable(rv)
-            else -> return
-        } ?: return
-        drawOverlay(c, bg, viewHolder.itemView, dX, rv)
+        if (actionState == ItemTouchHelper.ACTION_STATE_SWIPE) {
+            ensureMetrics(rv)
+            val bg = when {
+                dX > 0 -> replyDrawable(rv)
+                dX < 0 -> imageDrawable(rv)
+                else -> null
+            }
+            if (bg != null && isImageSwipeAllowed(viewHolder, dX)) {
+                drawOverlay(c, bg, viewHolder.itemView, dX, rv)
+            }
+        }
+        super.onChildDraw(c, rv, viewHolder, dX, dY, actionState, isCurrentlyActive)
+    }
+
+    /** Влево «открываем картинку» только для строк-картинок. */
+    private fun isImageSwipeAllowed(vh: RecyclerView.ViewHolder, dX: Float): Boolean {
+        if (dX > 0f) return true // свайп вправо — ответ, разрешён всем строкам
+        val adapter = (vh.itemView.parent as? RecyclerView)?.adapter
+            as? com.example.fess.kotlinmassage1.views.ChatRecyclerAdapter
+        val pos = vh.bindingAdapterPosition
+        if (adapter == null || pos == RecyclerView.NO_POSITION) return false
+        return when (adapter.itemAt(pos)) {
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem,
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> true
+            else -> false
+        }
     }
 
     private fun drawOverlay(

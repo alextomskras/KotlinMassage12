@@ -774,20 +774,10 @@ class ChatLogActivity : AppCompatActivity() {
         val dbId = item.rowDbId()
         if (dbId.isEmpty()) return
         val preview = item.plainTextForMenu()?.takeIf { it.isNotEmpty() }
-            ?: when (item) {
-                is com.example.fess.kotlinmassage1.views.KartinkaFromItem,
-                is com.example.fess.kotlinmassage1.views.KartinkaToItem -> "📷 Картинка"
-                else -> return
-            }
-        // msgId источника — id в ЗЕРКАЛЕ АВТОРА: у получателя свой ключ узла,
-        // но msgId автора одинаков в обоих зеркалах (по нему строится replyMap).
-        val sourceMsgId = when (item) {
-            is com.example.fess.kotlinmassage1.views.ChatFromItem -> item.msgId
-            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.msgId
-            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.msgId
-            is com.example.fess.kotlinmassage1.views.TextItem -> item.msgId
-            else -> dbId
-        }
+            ?: item.rowText().takeIf { it.isNotEmpty() }
+            ?: return
+        // msgId источника одинаков в обоих зеркалах (по нему строится replyMap).
+        val sourceMsgId = item.rowMsgId().ifEmpty { dbId }
         pendingReply = Triple(dbId, sourceMsgId, preview)
         findViewById<View>(R.id.reply_preview_bar).visibility = View.VISIBLE
         findViewById<android.widget.TextView>(R.id.reply_preview_text).text =
@@ -809,7 +799,7 @@ class ChatLogActivity : AppCompatActivity() {
             is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.transferRef
             else -> return
         }
-        val payload = item.text
+        val payload = item.rowText()
         val env = when (item) {
             is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.envJson
             is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.envJson

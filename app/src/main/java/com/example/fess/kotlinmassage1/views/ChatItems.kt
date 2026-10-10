@@ -63,6 +63,8 @@ class ChatFromItem(
     override fun plainTextForMenu(): String? =
         if (deleted) null else plainForEditing() ?: text.take(200)
 
+    override fun rowText(): String = text
+    override fun rowMsgId(): String = msgId
     override fun rowDbId(): String = dbId
 
     /** Открытый текст для диалога правки (plaintext или selfless-зеркало из env). */
@@ -96,7 +98,7 @@ class ChatToItem(
     val user: User,
     val time: String,
     private val encMsgId: String? = null,
-    val msgId: String = "",
+    override var msgId: String = "",
     /** Soft-delete: заглушка вместо контента. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
@@ -127,6 +129,8 @@ class ChatToItem(
     override fun plainTextForMenu(): String? =
         if (deleted) null else displayText(text, encMsgId).takeIf { it != TextItem.DECRYPT_FAIL_LABEL }
 
+    override fun rowText(): String = text
+    override fun rowMsgId(): String = msgId
     override fun rowDbId(): String = dbId
 }
 
@@ -215,6 +219,8 @@ class TextItem(
         } else plainForEditing()?.take(500)
     }
 
+    override fun rowText(): String = text
+    override fun rowMsgId(): String = msgId
     override fun rowDbId(): String = dbId
 
     /**
@@ -329,6 +335,8 @@ class KartinkaFromItem(
 
     override fun plainTextForMenu(): String? = null // копировать картинку нечего
 
+    override fun rowText(): String = "[\u041a\u0430\u0440\u0442\u0438\u043d\u043a\u0430]"
+    override fun rowMsgId(): String = msgId
     override fun rowDbId(): String = dbId
 }
 
@@ -336,7 +344,7 @@ class KartinkaToItem(
     val text: String,
     val user: User,
     val time: String,
-    val msgId: String = "",
+    override var msgId: String = "",
     val transferRef: String? = null,
     val envJson: String? = null,
     /** Soft-delete: рисуем заглушку вместо картинки. */
@@ -393,6 +401,8 @@ class KartinkaToItem(
 
     override fun plainTextForMenu(): String? = null
 
+    override fun rowText(): String = "[Картинка]"
+    override fun rowMsgId(): String = msgId
     override fun rowDbId(): String = dbId
 }
 
@@ -426,5 +436,6 @@ class DeletedTextItem(
 
     override fun plainTextForMenu(): String? = null // удалённое сообщение копировать нечего
 
+    override fun rowText(): String = TextItem.DELETED_LABEL
     override fun rowDbId(): String = dbId
 }
