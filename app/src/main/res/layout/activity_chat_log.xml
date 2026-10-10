@@ -54,7 +54,7 @@
         android:paddingTop="6dp"
         android:paddingBottom="6dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/reply_preview_bar"
+        app:layout_constraintBottom_toTopOf="@+id/edittext_chat_log"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -133,7 +133,7 @@
         android:clipToPadding="false"
         android:paddingTop="8dp"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-        app:layout_constraintBottom_toTopOf="@+id/reply_preview_bar"
+        app:layout_constraintBottom_toTopOf="@+id/edittext_chat_log"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
