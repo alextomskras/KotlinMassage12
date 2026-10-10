@@ -107,6 +107,38 @@ class ChatRecyclerAdapter(
         }
     }
 
+
+    /**
+     * Проставить прочтение всем исходящим строкам до `msgId` включительно
+     * (по receipt из /chat-read-status). readAt = время receipt'а.
+     * @return true, если хотя бы одна строка изменилась (нужен redraw).
+     */
+    fun markOutgoingReadUpTo(msgId: String, readAtSec: Long): Boolean {
+        var changed = false
+        for ((pos, row) in outgoingReadRows()) {
+            if (row.readAt >= readAtSec) continue
+            val d = items[pos] as? ChatRowDelegate
+            // Совпадение один-в-один (receipt про конкретное сообщение).
+            if (d?.rowMsgId() == msgId || findRowPosition(msgId) == pos) {
+                row.readAt = readAtSec
+                if (row.deliveredAt <= 0) row.deliveredAt = readAtSec
+                changed = true
+                continue
+            }
+            // Каскад «прочитано всё до receipt'а»: корректен ТОЛЬКО когда оба id —
+            // push-ключи ("-..."). У E2EE-строк id может парситься Firebase как число
+            // (base64 -> Long), лексикографическое сравнение тогда врёт — такую пару
+            // пропускаем и ждём точечный receipt по своему msgId.
+            val rid = d?.rowMsgId() ?: ""
+            if (rid.startsWith("-") && msgId.startsWith("-") && rid <= msgId) {
+                row.readAt = readAtSec
+                if (row.deliveredAt <= 0) row.deliveredAt = readAtSec
+                changed = true
+            }
+        }
+        return changed
+    }
+
     /** Позиция строки по ключу узла В ЗЕРКАЛЕ ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ (dbId). */
     fun findRowPosition(dbId: String): Int {
         for (i in items.indices) {

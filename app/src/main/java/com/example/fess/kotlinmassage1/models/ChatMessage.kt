@@ -101,12 +101,17 @@ class ChatMessage(
         fun fromSnapshot(s: com.google.firebase.database.DataSnapshot): ChatMessage? {
             if (!s.exists()) return null
             fun str(field: String): String = s.child(field).getValue(String::class.java) ?: ""
-            // id может быть числовым только у древних записей — нормализуем в строку
+            // id может быть числовым только у древних записей — нормализуем в строку.
+            // Приоритет: поле "msgId" (пишется в каждую копию с 2026-10, никогда не
+            // парсится числом) -> "id" -> ключ узла. Ключ узла важен для legacy-копий
+            // без полей id/msgId: иначе chatMessage.id="" и receipt/трекер теряют строку.
             val idRaw = s.child("id").value
-            val id = when (idRaw) {
-                is String -> idRaw
-                null -> ""
-                else -> idRaw.toString()
+            val msgIdField = s.child("msgId").getValue(String::class.java)
+            val id = when {
+                !msgIdField.isNullOrEmpty() && msgIdField.startsWith("-") -> msgIdField
+                idRaw is String && idRaw.isNotEmpty() -> idRaw
+                idRaw != null -> idRaw.toString()
+                else -> s.key ?: ""
             }
             val transferRefRaw = s.child("transferRef").value
             val envRaw = s.child("env").value

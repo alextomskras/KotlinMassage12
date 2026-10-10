@@ -46,6 +46,14 @@
         ".write": "auth != null && auth.uid === data.child('fromId').val()"
       }
     },
+    "chat-read-status": {
+      "$chatId": {
+        "$readerUid": {
+          ".write": "auth != null && auth.uid === $readerUid",
+          ".read": "auth != null && auth.uid === $readerUid"
+        }
+      }
+    },
     "transfers": {
       "$msgId": {
         ".read": "auth != null",

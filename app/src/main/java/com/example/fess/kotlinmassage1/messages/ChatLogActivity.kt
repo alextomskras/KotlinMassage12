@@ -327,7 +327,13 @@ class ChatLogActivity : AppCompatActivity() {
                     // заранее, не дожидаясь round-trip через зеркало собеседника.
                     val nowSec = System.currentTimeMillis() / 1000
                     adapter.applyReadToRowByKey(p0.key ?: snapshotKey, nowSec)
-}
+                }
+                // Read receipts, схема /chat-last-read: запоминаем самый свежий
+                // входящий msgId сессии — при onPause он уходит одним receipt'ом
+                // в /chat-read-status/{chatId}/{myUid} (без реворка сообщений).
+                if (isIncoming && chatMessage.id > lastSeenIncomingMsgId) {
+                    lastSeenIncomingMsgId = chatMessage.id
+                }
                 val row = buildChatItem(chatMessage, isIncoming)
                 // Пункт 13: каждая строка — потенциальный источник «Ответить»
                 // (свайп вправо). Ключ — dbId В НАШЕМ зеркале (snapshotKey),
@@ -373,6 +379,73 @@ class ChatLogActivity : AppCompatActivity() {
         // ВАЖНО: аргументы в обратном порядке — (партнёр, я), чтобы трекер
         // слушал user-messages/{partner}/{me} (копии наших исходящих с readAt).
         startReadTracker(toId, myUidForTracker)
+        // Read receipts, «Вариант А»: отдельная зона /chat-read-status.
+        // Слушаем receipt СОБЕСЕДНИКА и пишем свой — сообщения не трогаем.
+        startChatStatusTracker(myUidForTracker, toId)
+    }
+
+    // ===== Read receipts через /chat-read-status/{chatId}/{readerUid} =====
+    /** Самый свежий входящий msgId, показанный в этой сессии (лекс. max push-ключа). */
+    private var lastSeenIncomingMsgId: String = ""
+    /** Последний отправленный нами receipt (чтобы не писать одно и то же). */
+    private var lastWrittenReceiptMsgId: String = ""
+    private var statusRef: DatabaseReference? = null
+    private var statusListener: ValueEventListener? = null
+
+    /**
+     * Трекер статусов прочтения диалога. Слушает узел собеседника
+     * /chat-read-status/{chatId}/{partnerUid} = {ts, msgId}: если msgId
+     * receipt'а >= наших исходящих — красим две синие галки. Пишется только
+     * СВОЙ узел ({myUid}) — правила RTDB разрешают без admin-прав, поэтому
+     * Permission denied больше не снимает слушателей (главная причина, почему
+     * старые галочки не работали).
+     */
+    private fun startChatStatusTracker(myUid: String, otherUid: String) {
+        stopChatStatusTracker()
+        val chatId = DbPaths.sortedChatId(myUid, otherUid)
+        val ref = FirebaseDatabase.getInstance().reference.child(DbPaths.chatReadBy(chatId, otherUid))
+        val listener = object : ValueEventListener {
+            override fun onDataChange(p0: DataSnapshot) {
+                val ts = (p0.child("ts").getValue(Long::class.java) ?: 0L)
+                val msgId = p0.child("msgId").getValue(String::class.java) ?: return
+                if (ts <= 0 || msgId.isEmpty()) return
+                if (adapter.markOutgoingReadUpTo(msgId, ts)) adapter.notifyDataSetChanged()
+            }
+            override fun onCancelled(p0: DatabaseError) {
+                Log.w(TAG, "statusTracker cancelled: ${p0.message}")
+            }
+        }
+        statusRef = ref
+        statusListener = listener
+        ref.addValueEventListener(listener)
+    }
+
+    private fun stopChatStatusTracker() {
+        statusListener?.let { l -> statusRef?.removeEventListener(l) }
+        statusRef = null
+        statusListener = null
+    }
+
+    /**
+     * Отправить свой receipt: одна запись на уход из чата (onPause/destroy),
+     * не чаще одного раза на тот же msgId. Пишем ОДИН узел
+     * /chat-read-status/{chatId}/{myUid} = ServerValue.TIMESTAMP + msgId —
+     * самый дешёвый вариант (см. план: никаких массовых обновлений сообщений).
+     */
+    private fun publishReadReceipt() {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        val msgId = lastSeenIncomingMsgId
+        if (msgId.isEmpty() || msgId == lastWrittenReceiptMsgId) return
+        lastWrittenReceiptMsgId = msgId
+        val chatId = DbPaths.sortedChatId(myUid, otherUid)
+        FirebaseDatabase.getInstance().reference
+            .child(DbPaths.chatReadBy(chatId, myUid))
+            .setValue(mapOf(
+                "ts" to com.google.firebase.database.ServerValue.TIMESTAMP,
+                "msgId" to msgId
+            ))
+            .addOnFailureListener { e -> Log.w(TAG, "receipt write failed: ${e.message}") }
     }
 
     /** Трекер readAt/readReceipt в зеркале собеседника (копии наших исходящих). */
@@ -679,8 +752,12 @@ class ChatLogActivity : AppCompatActivity() {
         // и красит одинарную СИНИЮ галочку («доставлено»). Без явного false
         // поле у новых сообщений отсутствовало бы, и трекер не различал бы
         // «не доставлено» от legacy-узлов.
+        // msgId автора дублируется В КАЖДОМ узле: у E2EE-строк id может совпасть
+        // с числом (base64 -> Long в Firebase), тогда read-tracker/получатель
+        // теряют связь строки с авторским ключом; отдельное текстовое поле
+        // "msgId" никогда не конвертируется в число.
         val partnerCopy = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply {
-            put("readAt", 0L); put("delivered", false)
+            put("readAt", 0L); put("delivered", false); put("msgId", chatMessage.id)
         }
         // Источник цитаты регистрируем ПО dbId ЗЕРКАЛА ПОЛУЧАТЕЛЯ (mirrorKey):
         // когда он прочтёт историю, applyReply найдёт превью по своему ключу узла.
@@ -1121,9 +1198,17 @@ class ChatLogActivity : AppCompatActivity() {
         return out
     }
 
+    override fun onPause() {
+        // Read receipt: одна запись на уход из чата (см. publishReadReceipt).
+        publishReadReceipt()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         // Снимаем слушателя — иначе активити утекает в Firebase навсегда
         stopReadTracker()
+        publishReadReceipt()
+        stopChatStatusTracker()
         val listener = messagesListener
         if (listener != null) {
             messagesRef?.removeEventListener(listener)
