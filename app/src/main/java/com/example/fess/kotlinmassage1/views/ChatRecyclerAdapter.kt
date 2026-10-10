@@ -115,6 +115,26 @@ class ChatRecyclerAdapter(
         return -1
     }
 
+    /**
+     * Оптимистичная перекраска галочки: получатель только что отметил входящее
+     * прочитанным (receipt записан в его зеркало). У НЕГО исходящих строк с этим
+     * ключом нет, поэтому метод просто ничего не делает; но если тот же ключ
+     * совпадает с dbId/msgId нашей исходящей копии (чат открыт у автора на этом
+     * же устройстве после реворка), строка перекрашивается сразу — без ожидания
+     * round-trip read-tracker'а. Идемпотентно и безопасно.
+     */
+    fun applyReadToRowByKey(key: String, readAtSec: Long) {
+        if (key.isEmpty() || readAtSec <= 0) return
+        val byMsg = outgoingReadRows().firstOrNull { (_, d) ->
+            val delegate = d as? ChatRowDelegate
+            delegate?.rowMsgId() == key || delegate?.rowDbId() == key
+        } ?: return
+        if (byMsg.second.readAt != readAtSec) {
+            byMsg.second.readAt = readAtSec
+            updateAt(byMsg.first)
+        }
+    }
+
     fun submit(newItems: List<ChatRowDelegate>) {
         val ctx = rowContextProvider?.invoke()
         newItems.forEach { it.rowContext = ctx }

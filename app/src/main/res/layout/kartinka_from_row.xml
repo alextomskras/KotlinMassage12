@@ -55,7 +55,9 @@
         app:tint="@color/tick_sent"
         app:layout_constraintBottom_toBottomOf="@+id/textView_message_time"
         app:layout_constraintTop_toTopOf="@+id/textView_message_time"
-        app:layout_constraintEnd_toStartOf="@+id/textView_message_time" />
+        app:layout_constraintEnd_toStartOf="@+id/textView_message_time"
+        app:layout_constraintHorizontal_chainStyle="packed"
+        app:layout_constraintStart_toStartOf="@+id/kartinka_chat_from_row2" />
 
     <TextView
         android:id="@+id/textView_message_time"
@@ -67,6 +69,7 @@
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="@+id/kartinka_chat_from_row2"
+        app:layout_constraintStart_toEndOf="@+id/imageview_msg_status_img"
         app:layout_constraintTop_toBottomOf="@+id/kartinka_chat_from_row2"
         app:layout_goneMarginEnd="8dp" />
 

@@ -249,7 +249,12 @@ class ChatLogActivity : AppCompatActivity() {
                 // legacy-записи поля не имеют -> их НЕ трогаем (без реворка).
                 if (isIncoming && chatMessage.readAt == 0L) {
                     markIncomingAsRead(p0.key ?: snapshotKey)
-                }
+                    // Оптимистично: раз мы (получатель) только что отметили прочтение, это же
+                    // время прочтения актуально для нашей копии автора — перекрашиваем галку
+                    // заранее, не дожидаясь round-trip через зеркало собеседника.
+                    val nowSec = System.currentTimeMillis() / 1000
+                    adapter.applyReadToRowByKey(p0.key ?: snapshotKey, nowSec)
+}
                 val row = buildChatItem(chatMessage, isIncoming)
                 // Пункт 13: каждая строка — потенциальный источник «Ответить»
                 // (свайп вправо). Ключ — dbId В НАШЕМ зеркале (snapshotKey),
@@ -279,16 +284,17 @@ class ChatLogActivity : AppCompatActivity() {
         messagesRef = ref
         ref.addChildEventListener(listener)
 
-        // Отдельный read-tracker по НАШЕМУ зеркалу. Штатный listener выше
-        // слушает DbPaths.conversation(me, partner) — для исходящих это папка
-        // собеседника, а получатель пишет readAt в СВОЁ зеркало
-        // (/user-messages/{receiver}/{sender}/{mirrorKey}). Без этого трека
-        // изменение readAt у исходящего сообщения вообще не доходило до
-        // клиента отправителя: галочка навсегда оставалась одной серой.
-        startReadTracker(FirebaseAuth.getInstance().uid ?: return, toId)
+        // Read-tracker по ЗЕРКАЛУ СОБЕСЕДНИКА: наши исходящие сообщения лежат
+        // в /user-messages/{partner}/{me}, и получатель проставляет readAt в
+        // свою копию именно там. Слушать своё зеркало бессмысленно — receipt
+        // там не появляется, и галочка навсегда оставалась одной серой.
+        val myUidForTracker = FirebaseAuth.getInstance().uid ?: return
+        // ВАЖНО: аргументы в обратном порядке — (партнёр, я), чтобы трекер
+        // слушал user-messages/{partner}/{me} (копии наших исходящих с readAt).
+        startReadTracker(toId, myUidForTracker)
     }
 
-    /** Трекер readAt/readReceipt в нашем зеркале диалога. */
+    /** Трекер readAt/readReceipt в зеркале собеседника (копии наших исходящих). */
     private var readTrackerRef: DatabaseReference? = null
     private var readTracker: ValueEventListener? = null
 
@@ -304,12 +310,18 @@ class ChatLogActivity : AppCompatActivity() {
 
     private fun startReadTracker(myUid: String, otherUid: String) {
         stopReadTracker()
-        val ref = FirebaseDatabase.getInstance().getReference(DbPaths.conversation(myUid, otherUid))
+        // ВАЖНО: слушаем ЧУЖОЕ зеркало — /user-messages/{partner}/{me}.
+        // Копии НАШИХ исходящих сообщений живут именно там (автор пишет их в
+        // папку получателя), и получатель проставляет readAt в тот же узел:
+        //   /user-messages/{otherUid}/{myUid}/{mirrorKey}/readAt.
+        // В своём зеркале ({myUid}/{otherUid}) лежат входящие + наши авторские
+        // копии с readAt=-1 (маркер «не реворкать»), поэтому трекер по своему
+        // пути никогда не увидел бы receipt — галочка осталась бы серой.
+        val ref = FirebaseDatabase.getInstance().getReference(DbPaths.conversation(otherUid, myUid))
         // ВАЖНО: именно ValueEventListener на весь узел диалога, а НЕ
-        // ChildEventListener. Причина: получатель пишет readAt в СВОЁ зеркало —
-        // это ДОЧЕРНИЙ лист nodeKey/readAt. Для отправителя (мы слушаем своё
-        // /user-messages/{me}/{partner}) такой deep-path не является прямым
-        // ребёнком и ChildEventListener его никогда не увидит — поэтому
+        // ChildEventListener. Причина: получатель пишет readAt как ДОЧЕРНИЙ
+        // лист nodeKey/readAt. Для ChildEventListener такой deep-path не
+        // является прямым ребёнком и изменение никогда не приходит — поэтому
         // галочки и не менялись. onValueEvent получает всё дерево целиком и
         // сравнивает readAt каждого узла с тем, что уже отрисовано.
         val tracker = object : ValueEventListener {
@@ -356,7 +368,20 @@ class ChatLogActivity : AppCompatActivity() {
         val readValue = (c.child("readAt").getValue(Long::class.java)
             ?: c.child("readReceipt").getValue(Long::class.java)) ?: return
         if (readValue <= 0) return
-        // Быстрая проверка: если в списке уже нет строк с этим ключом — пропускаем.
+        // Основной путь: трекер слушает ЧУЖОЕ зеркало; ключ узла там —
+        // mirrorKey, но поле id внутри узла всегда авторский msgId, которым мы
+        // заполняем msgId живой строки при отправке. Ищем исходящую строку по
+        // msgId (покрывает и dbId: у своих сообщений dbId == msgId).
+        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> (d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate)?.rowMsgId() == key }
+        if (byMsg != null) {
+            if (byMsg.second.readAt != readValue) {
+                byMsg.second.readAt = readValue
+                adapter.updateAt(byMsg.first)
+            }
+            return
+        }
+        // Fallback: поиск по dbId (для строк, чей msgId отличается от ключа —
+        // например после ретара записи релеем).
         val pos = adapter.findRowPosition(key)
         if (pos >= 0) {
             when (val item = adapter.itemAt(pos)) {
@@ -370,16 +395,7 @@ class ChatLogActivity : AppCompatActivity() {
             }
             return
         }
-        // fallback: ключ может совпадать с msgId (id в зеркале автора)
-        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> (d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate)?.rowMsgId() == key }
-        if (byMsg != null) {
-            if (byMsg.second.readAt != readValue) {
-                byMsg.second.readAt = readValue
-                adapter.updateAt(byMsg.first)
-            }
-            return
-        }
-        // Совпадения нет ни по dbId, ни по msgId. Возможные случаи:
+        // Совпадения нет ни по msgId, ни по dbId. Возможные случаи:
         //  a) узел принадлежит МНЕ (fromId == myUid), но строки с ним в списке
         //     нет — чат ещё достраивается. НИЧЕГО не пишем: раньше отсюда
         //     уходил поток receipt-записей в чужие узлы, правила RTDB их
@@ -387,22 +403,10 @@ class ChatLogActivity : AppCompatActivity() {
         //     — галочки у отправителя навсегда оставались серыми.
         //  b) чужой узел с readAt > 0, а строки ещё нет — просто не отрисована;
         //     при достройке readAt подтянется из snapshotToChatMessage.
-        //  c) легальная доводка receipt для legacy-узлов: если в ЗЕРКАЛЕ АВТОРА
-        //     есть время прочтения (>0), копируем его В СВОЮ копию
-        //     (/user-messages/{me}/{partner}/{key}/readAt) — туда писать
-        //     разрешено правилами. Идемпотентно: повторных записей не будет.
-        val myUid = FirebaseAuth.getInstance().uid ?: return
-        val fromId = c.child("fromId").getValue(String::class.java) ?: return
-        if (fromId == myUid) return
-        val authorCopyRef = FirebaseDatabase.getInstance().reference
-            .child(DbPaths.conversation(fromId, myUid)).child(key)
-        authorCopyRef.get().addOnSuccessListener { ac ->
-            val authorReadAt = (ac.child("readAt").getValue(Long::class.java)
-                ?: ac.child("readReceipt").getValue(Long::class.java)) ?: 0L
-            if (authorReadAt <= 0) return@addOnSuccessListener
-            authorCopyRef.child("readAt").setValue(authorReadAt)
-                .addOnFailureListener { e -> Log.w(TAG, "receipt mirror write failed: ${e.message}") }
-        }.addOnFailureListener { e -> Log.w(TAG, "author copy read failed: ${e.message}") }
+        //  c) раньше отсюда уходила «доводка» receipt копией в зеркало автора —
+        //     при прослушке чужого зеркала это создавало петлю записей между
+        //     клиентами. Теперь узлы без живой строки просто игнорируются:
+        //     при достройке истории readAt подтянется напрямую из снапшота.
     }
 
     /** Точечное обновление живой строки по изменению её узла в зеркале автора. */
@@ -648,7 +652,9 @@ class ChatLogActivity : AppCompatActivity() {
         val marked = (p0.child("readAt").getValue(Long::class.java) ?: -2L) == 0L
         if (hasRead || !marked) return
         try {
-            markIncomingAsRead(p0.key ?: return)
+            val key = p0.key ?: return
+            markIncomingAsRead(key)
+            adapter.applyReadToRowByKey(key, System.currentTimeMillis() / 1000)
         } catch (e: Exception) {
             Log.w(TAG, "markIncomingIfUnread skipped: ${e.message}")
         }
@@ -657,8 +663,9 @@ class ChatLogActivity : AppCompatActivity() {
     /**
      * Read receipt: получатель отмечает входящее сообщение прочитанным — пишет
      * readAt только в свою копию зеркала (правила RTDB: запись в свой узел).
-     * Отправитель видит change через свой ChildEventListener и красит двойную
-     * синюю галочку. Идемпотентно: повторная отметка не пишется.
+     * Отправитель подтягивает изменение read-tracker'ом по своему зеркалу
+     * (он слушает /user-messages/{partner}/{me}) и красит двойную синюю
+     * галочку. Идемпотентно: повторная отметка не пишется (поле уже > 0).
      */
     private fun markIncomingAsRead(nodeKey: String) {
         val myUid = FirebaseAuth.getInstance().uid ?: return
