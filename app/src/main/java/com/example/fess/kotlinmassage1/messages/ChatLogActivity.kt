@@ -208,23 +208,21 @@ class ChatLogActivity : AppCompatActivity() {
                     return
                 }
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
-                adapter.append(buildChatItem(chatMessage, isIncoming))
-                scrollToBottom()
-                // Read receipt: входящее и ещё не отмеченное -> ставим readAt
-                // В СВОЁМ зеркале (/user-messages/{me}/{partner}/{msgId});
-                // отправитель подтянет это своим read-tracker'ом.
+                // Read receipt ДО отрисовки: входящее и ещё не отмеченное ->
+                // ставим readAt в СВОЁ зеркало (/user-messages/{me}/{partner}/
+                // {nodeKey}). Ключ узла берём ИЗ ПАРАМЕТРА onChildAdded, а не из
+                // общего поля snapshotKey (его перезаписывают другие колбэки —
+                // раньше receipt уходил в чужой узел). Пишем до append(), чтобы
+                // при переключении между чатами read-tracker гарантированно
+                // увидел свежий timestamp.
                 // Отличаем «не прочитано» от «поля нет вовсе»: новые сообщения
                 // автор пишет с readAt=0 в копию собеседника (см. writeMessageToDb),
                 // legacy-записи поля не имеют -> их НЕ трогаем (без реворка).
                 if (isIncoming && chatMessage.readAt == 0L) {
-                    // ВАЖНО: ключ берём ИЗ ПАРАМЕТРА onChildAdded, а не из общего
-                    // поля snapshotKey. Поле перезаписывается асинхронными
-                    // колбэками загрузки картинок (ImageLoader пишет receipt по
-                    // своему msgId) — раньше это приводило к тому, что readAt
-                    // уходил в ЧУЖОЙ узел, у нашего узла поле так и оставалось
-                    // 0, а у отправителя галочка навечно серела.
                     markIncomingAsRead(p0.key ?: snapshotKey)
                 }
+                adapter.append(buildChatItem(chatMessage, isIncoming))
+                scrollToBottom()
             }
 
             override fun onCancelled(p0: DatabaseError) {
@@ -279,20 +277,22 @@ class ChatLogActivity : AppCompatActivity() {
         // сравнивает readAt каждого узла с тем, что уже отрисовано.
         val tracker = object : ValueEventListener {
             override fun onDataChange(p0: DataSnapshot) {
-                // Пропускаем «первую» полную выгрузку, пока чат ещё пустой:
-                // ValueEventListener приходит раньше, чем onChildAdded основного
-                // слушателя достроит строки. Иначе applyReadFromMirror для узлов
-                // с readAt=0 не находит строк и пишет ПОТОК receipt в узел автора
-                // (/user-messages/{sender}/{me}/{msgId}) — а правила RTDB
-                // запрещают нам запись в чужие узлы ("auth.uid === $myUid").
-                // Полученный Permission denied снимал ВСЕ слушатели с корня
-                // reference (штатный Firebase при отклонённой записи отключает
-                // listeners по всему дереву) — именно поэтому галочки у
-                // отправителя никогда не перекрашивались, хотя сообщения
-                // приходили. При повторных onValueEvent список уже наполнен,
-                // ложные записи не происходят.
+                // Пропускаем полную выгрузку, пока чат ещё пустой: ValueEventListener
+                // может прийти раньше, чем onChildAdded основного слушателя достроит
+                // строки. Раньше отсюда для узлов без живой строки уходил ПОТОК
+                // receipt-записей (в т.ч. в чужие узлы), правила RTDB их отклоняли,
+                // а Firebase при Permission denied снимал ВСЕ слушатели — поэтому
+                // галочки у отправителя никогда не перекрашивались.
                 if (adapter.itemCount == 0) return
                 for (c in p0.children) applyReadFromMirror(c)
+                // После того как трекер проехал по всему узлу диалога и все
+                // live-строки получили readAt, принудительно перерисовываем
+                // список. Это закрывает случай, когда receipt был проставлен,
+                // пока клиента в чате не было (сообщение прочитано вчера):
+                // основной ChildEventListener НЕ выдаёт onChildChanged на
+                // уже загруженные узлы, и без этого шага галочка осталась бы
+                // серой до первого изменения узла.
+                adapter.notifyDataSetChanged()
             }
             override fun onCancelled(p0: DatabaseError) {
                 Log.w(TAG, "readTracker cancelled: ${p0.message}")
@@ -324,41 +324,48 @@ class ChatLogActivity : AppCompatActivity() {
         if (pos >= 0) {
             when (val item = adapter.itemAt(pos)) {
                 is com.example.fess.kotlinmassage1.views.ChatFromItem ->
-                    if (item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                    if (item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
                 is com.example.fess.kotlinmassage1.views.TextItem ->
-                    if (!item.isIncomingForMenu() && item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                    if (!item.isIncomingForMenu() && item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
                 is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
-                    if (item.readAt <= 0) { item.readAt = readValue; adapter.updateAt(pos) }
+                    if (item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
                 else -> {}
             }
             return
         }
         // fallback: ключ может совпадать с msgId (id в зеркале автора)
         val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> d.msgId == key }
-        if (byMsg != null && byMsg.second.readAt <= 0) {
-            byMsg.second.readAt = readValue
-            adapter.updateAt(byMsg.first)
+        if (byMsg != null) {
+            if (byMsg.second.readAt != readValue) {
+                byMsg.second.readAt = readValue
+                adapter.updateAt(byMsg.first)
+            }
             return
         }
-        // Совпадение по msgId нашлось, но значение <= 0 — это маркер «не
-        // прочитано» из копии автора (пишет отправитель). НИЧЕГО не делаем:
-        // раньше отсюда улетала запись receipt в узел автора, правила RTDB
-        // её отклоняли (Permission denied), и Firebase снимал ВСЕ слушатели
-        // — галочки у отправителя навсегда оставались серыми. Пишем receipt
-        // только когда поле явно > 0 (получатель отметил прочтение в своём
-        // зеркале, автор продублировал его в нашу копию).
-        if (byMsg != null) return
-        // Ключа нет ни в одном живом узле — значит это legacy-сообщение без
-        // поля readAt в нашей копии, а получатель уже поставил receipt в свою
-        // копию. Продублируем его в НАШУ копию (/user-messages/{me}/{partner}/
-        // {key}) — туда нам писать разрешено; на этом receipt сходится,
-        // повторных записей больше не будет.
+        // Совпадения нет ни по dbId, ни по msgId. Возможные случаи:
+        //  a) узел принадлежит МНЕ (fromId == myUid), но строки с ним в списке
+        //     нет — чат ещё достраивается. НИЧЕГО не пишем: раньше отсюда
+        //     уходил поток receipt-записей в чужие узлы, правила RTDB их
+        //     отклоняли (Permission denied), и Firebase снимал ВСЕ слушатели
+        //     — галочки у отправителя навсегда оставались серыми.
+        //  b) чужой узел с readAt > 0, а строки ещё нет — просто не отрисована;
+        //     при достройке readAt подтянется из snapshotToChatMessage.
+        //  c) легальная доводка receipt для legacy-узлов: если в ЗЕРКАЛЕ АВТОРА
+        //     есть время прочтения (>0), копируем его В СВОЮ копию
+        //     (/user-messages/{me}/{partner}/{key}/readAt) — туда писать
+        //     разрешено правилами. Идемпотентно: повторных записей не будет.
         val myUid = FirebaseAuth.getInstance().uid ?: return
-        val otherUid = toUser?.uid ?: return
-        FirebaseDatabase.getInstance().reference
-            .child("${DbPaths.conversation(myUid, otherUid)}/$key/readAt")
-            .setValue(readValue)
-            .addOnFailureListener { e -> Log.w(TAG, "receipt mirror write failed: ${e.message}") }
+        val fromId = c.child("fromId").getValue(String::class.java) ?: return
+        if (fromId == myUid) return
+        val authorCopyRef = FirebaseDatabase.getInstance().reference
+            .child(DbPaths.conversation(fromId, myUid)).child(key)
+        authorCopyRef.get().addOnSuccessListener { ac ->
+            val authorReadAt = (ac.child("readAt").getValue(Long::class.java)
+                ?: ac.child("readReceipt").getValue(Long::class.java)) ?: 0L
+            if (authorReadAt <= 0) return@addOnSuccessListener
+            authorCopyRef.child("readAt").setValue(authorReadAt)
+                .addOnFailureListener { e -> Log.w(TAG, "receipt mirror write failed: ${e.message}") }
+        }.addOnFailureListener { e -> Log.w(TAG, "author copy read failed: ${e.message}") }
     }
 
     /** Точечное обновление живой строки по изменению её узла в зеркале автора. */
