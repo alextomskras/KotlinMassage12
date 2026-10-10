@@ -5,9 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.view.View
 import android.util.Log
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.example.fess.kotlinmassage1.R
@@ -97,11 +99,23 @@ class ChatLogActivity : AppCompatActivity() {
         // return@onItemLongClickListener (label = имя переменной, а не функции).
         adapter.onItemLongClickListener = ::handleItemLongClick
 
-        findViewById<Button>(R.id.send_button_chat_log).setOnClickListener {
+        findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.send_button_chat_log).setOnClickListener {
             performSendMessage()
         }
 
-        findViewById<Button>(R.id.image_send_button_chat_log).setOnClickListener {
+        // Отправка по Enter с аппаратной/экранной клавиатуры
+        findViewById<EditText>(R.id.edittext_chat_log).setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            ) {
+                performSendMessage()
+                true
+            } else {
+                false
+            }
+        }
+
+        findViewById<ImageButton>(R.id.image_send_button_chat_log).setOnClickListener {
             val intent = Intent(Intent.ACTION_PICK).apply { type = "image/*" }
             startActivityForResult(intent, REQUEST_PICK_IMAGE)
         }
@@ -126,7 +140,13 @@ class ChatLogActivity : AppCompatActivity() {
             } catch (_: Exception) {
                 // не все URI поддерживают persistable — не страшно, читаем как есть
             }
-            findViewById<Button>(R.id.image_send_button_chat_log).alpha = 0f
+            // Превью выбранного фото поверх кнопки (крестиком не закрываем —
+            // после отправки resetImagePickerUi вернёт иконку).
+            findViewById<de.hdodenhof.circleimageview.CircleImageView>(R.id.select_photoview_image_send)
+                .apply {
+                    setImageURI(uri)
+                    visibility = View.VISIBLE
+                }
             // Сжатие + base64 — в фоне (ImageLoader), результат приходит в main.
             // Картинку НЕ грузим в Firebase Storage — кладём base64 прямо в БД.
             ImageLoader.compressUriDetailed(this, uri) { result ->
@@ -147,8 +167,10 @@ class ChatLogActivity : AppCompatActivity() {
 
     private fun resetImagePickerUi() {
         findViewById<de.hdodenhof.circleimageview.CircleImageView>(R.id.select_photoview_image_send)
-            .setImageBitmap(null)
-        findViewById<Button>(R.id.image_send_button_chat_log).alpha = 1f
+            .apply {
+                setImageBitmap(null)
+                visibility = View.GONE
+            }
     }
 
     /**

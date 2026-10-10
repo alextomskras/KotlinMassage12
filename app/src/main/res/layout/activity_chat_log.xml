@@ -7,55 +7,79 @@
     android:background="@color/chat_background"
     tools:context=".messages.ChatLogActivity">
 
+    <!-- ===== Нижняя панель ввода (Material 3, стиль мессенджера) ===== -->
+
+    <!-- Кнопка выбора картинки: иконка вместо текста "img".
+         Поверх неё лежит select_photoview_image_send — превью выбранного фото. -->
+    <ImageButton
+        android:id="@+id/image_send_button_chat_log"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/attach_image"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_attach_image"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Превью выбранного фото: поверх кнопки, виден только при выборе -->
+    <de.hdodenhof.circleimageview.CircleImageView
+        android:id="@+id/select_photoview_image_send"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone"
+        app:civ_border_color="@color/send_button_background"
+        app:civ_border_width="2dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <EditText
         android:id="@+id/edittext_chat_log"
         android:layout_width="0dp"
-        android:layout_height="50dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        android:layout_marginRight="8dp"
-        android:background="@android:color/white"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/input_pill_background"
         android:ems="10"
-        android:hint="Enter Message"
-        android:inputType="textPersonName"
+        android:gravity="center_vertical"
+        android:hint="@string/enter_message"
+        android:imeOptions="actionSend"
+        android:inputType="textShortMessage|textAutoCorrect|textCapSentences"
+        android:maxLines="4"
+        android:minHeight="48dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/md_on_surface"
+        android:textColorHint="#9AA0A6"
+        android:textSize="16sp"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/send_button_chat_log" />
+        app:layout_constraintEnd_toStartOf="@+id/send_button_chat_log"
+        app:layout_constraintStart_toEndOf="@+id/image_send_button_chat_log" />
 
-    <Button
+    <!-- Круглая FAB-кнопка отправки со стрелкой вместо текстовой "Send" -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/send_button_chat_log"
         android:layout_width="wrap_content"
-        android:layout_height="50dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="wrap_content"
         android:layout_marginEnd="8dp"
         android:layout_marginRight="8dp"
-        android:background="@drawable/rounded_button"
-        android:text="Send"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
+        android:layout_marginBottom="8dp"
+        android:contentDescription="@string/send"
+        app:backgroundTint="@color/send_button_background"
+        app:elevation="2dp"
+        app:maxImageSize="24dp"
+        app:srcCompat="@drawable/ic_send"
+        app:tint="@android:color/white"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
-
-    <Button
-        android:id="@+id/image_send_button_chat_log"
-        android:layout_width="50dp"
-        android:layout_height="50dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginLeft="8dp"
-        android:background="@drawable/rounded_button"
-        android:text="img"
-        android:textColor="@android:color/white"
-        android:textStyle="bold"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <de.hdodenhof.circleimageview.CircleImageView
-        android:id="@+id/select_photoview_image_send"
-        android:layout_width="50dp"
-        android:layout_height="50dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginLeft="8dp"
-        app:civ_border_width="4dp"
-        app:layout_constraintBottom_toBottomOf="@+id/image_send_button_chat_log"
-        app:layout_constraintStart_toStartOf="parent" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerview_chat_log"

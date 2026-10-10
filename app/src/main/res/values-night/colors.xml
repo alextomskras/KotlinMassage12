@@ -7,4 +7,7 @@
     <color name="chat_background">#171B1F</color>
     <color name="md_surface">#171B1F</color>
     <color name="md_on_surface">#E9EDF1</color>
+    <color name="input_pill_background">#22272C</color>
+    <color name="input_pill_stroke">#3A4046</color>
+    <color name="send_button_background">#1B7A45</color>
 </resources>
