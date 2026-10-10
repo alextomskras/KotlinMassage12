@@ -208,7 +208,10 @@ class ChatLogActivity : AppCompatActivity() {
                 // Read receipt: входящее и ещё не отмеченное -> ставим readAt
                 // В СВОЁМ зеркале (/user-messages/{me}/{partner}/{msgId});
                 // отправитель подтянет это своим read-tracker'ом.
-                if (isIncoming && chatMessage.readAt <= 0) {
+                // Отличаем «не прочитано» от «поля нет вовсе»: новые сообщения
+                // автор пишет с readAt=0 в копию собеседника (см. writeMessageToDb),
+                // legacy-записи поля не имеют -> их НЕ трогаем (без реворка).
+                if (isIncoming && chatMessage.readAt == 0L) {
                     markIncomingAsRead(snapshotKey)
                 }
             }
@@ -241,23 +244,29 @@ class ChatLogActivity : AppCompatActivity() {
 
     /** Трекер readAt/readReceipt в нашем зеркале диалога. */
     private var readTrackerRef: DatabaseReference? = null
-    private var readTracker: ChildEventListener? = null
+    private var readTracker: ValueEventListener? = null
 
     private fun startReadTracker(myUid: String, otherUid: String) {
         stopReadTracker()
         val ref = FirebaseDatabase.getInstance().getReference(DbPaths.conversation(myUid, otherUid))
-        val tracker = object : ChildEventListener {
-            override fun onChildAdded(p0: DataSnapshot, p1: String?) = handleTrackedNode(p0)
-            override fun onChildChanged(p0: DataSnapshot, p1: String?) = handleTrackedNode(p0)
-            override fun onChildRemoved(p0: DataSnapshot) {}
-            override fun onChildMoved(p0: DataSnapshot, p1: String?) {}
+        // ВАЖНО: именно ValueEventListener на весь узел диалога, а НЕ
+        // ChildEventListener. Причина: получатель пишет readAt в СВОЁ зеркало —
+        // это ДОЧЕРНИЙ лист nodeKey/readAt. Для отправителя (мы слушаем своё
+        // /user-messages/{me}/{partner}) такой deep-path не является прямым
+        // ребёнком и ChildEventListener его никогда не увидит — поэтому
+        // галочки и не менялись. onValueEvent получает всё дерево целиком и
+        // сравнивает readAt каждого узла с тем, что уже отрисовано.
+        val tracker = object : ValueEventListener {
+            override fun onDataChange(p0: DataSnapshot) {
+                for (c in p0.children) applyReadFromMirror(c)
+            }
             override fun onCancelled(p0: DatabaseError) {
                 Log.w(TAG, "readTracker cancelled: ${p0.message}")
             }
         }
         readTrackerRef = ref
         readTracker = tracker
-        ref.addChildEventListener(tracker)
+        ref.addValueEventListener(tracker)
     }
 
     private fun stopReadTracker() {
@@ -271,11 +280,12 @@ class ChatLogActivity : AppCompatActivity() {
      * двойную синюю галочку у соответствующей исходящей строки. Строку ищем
      * по dbId (ключ в нашем зеркале), затем по msgId (fallback).
      */
-    private fun handleTrackedNode(p0: DataSnapshot) {
-        val key = p0.key ?: return
-        val readValue = (p0.child("readAt").getValue(Long::class.java)
-            ?: p0.child("readReceipt").getValue(Long::class.java)) ?: return
+    private fun applyReadFromMirror(c: DataSnapshot) {
+        val key = c.key ?: return
+        val readValue = (c.child("readAt").getValue(Long::class.java)
+            ?: c.child("readReceipt").getValue(Long::class.java)) ?: return
         if (readValue <= 0) return
+        // Быстрая проверка: если в списке уже нет строк с этим ключом — пропускаем.
         val pos = adapter.findRowPosition(key)
         if (pos >= 0) {
             when (val item = adapter.itemAt(pos)) {
@@ -291,7 +301,7 @@ class ChatLogActivity : AppCompatActivity() {
         }
         // fallback: ключ может совпадать с msgId (id в зеркале автора)
         val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> d.msgId == key }
-        if (byMsg != null) {
+        if (byMsg != null && byMsg.second.readAt <= 0) {
             byMsg.second.readAt = readValue
             adapter.updateAt(byMsg.first)
         }
@@ -387,6 +397,13 @@ class ChatLogActivity : AppCompatActivity() {
      * (user-messages в обе стороны + latest-messages + задача push в /outbox).
      * Раньше было 5 независимых setValue — при обрыве сети диалог и «последнее
      * сообщение» могли разъехаться, а push потеряться.
+     *
+     * ВАЖНО ПРО ГАЛОЧКИ: автор пишет readAt=-1 в СВОЁ зеркало (nodeKey), а в
+     * ЗЕРКАЛО СОБЕСЕДНИКА — readAt=0. Разница нужна, чтобы получатель мог по
+     * значению отличить «ещё не прочитано» от «нет поля у legacy-сообщений»:
+     * markIncomingAsRead срабатывает только когда поле явно присутствует и
+     * равно 0. Иначе на старых переписках receipt писался бы заново при каждом
+     * открытии чата (лишние записи), а на новых — не писался вовсе.
      */
     private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null, imageEnv: String? = null) {
         val fromId = FirebaseAuth.getInstance().uid ?: return
@@ -458,7 +475,11 @@ class ChatLogActivity : AppCompatActivity() {
         val outboxKey = chatMessage.id
 
         updates["/${DbPaths.conversation(fromId, toId)}/${messageRef.key}"] = chatMessage
-        updates["/${DbPaths.conversation(toId, fromId)}/$mirrorKey"] = chatMessage
+        // Копия собеседника: readAt=0 — сигнал «не прочитано, отметь при просмотре».
+        // Поле присутствует явно (в отличие от legacy-записей без readAt), поэтому
+        // получатель гарантированно вызовет markIncomingAsRead при открытии чата.
+        val partnerCopy = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply { put("readAt", 0L) }
+        updates["/${DbPaths.conversation(toId, fromId)}/$mirrorKey"] = partnerCopy
         updates["/${DbPaths.latestConversation(fromId, toId)}"] = chatMessage
         updates["/${DbPaths.latestConversation(toId, fromId)}"] = chatMessage
         updates["/${DbPaths.OUTBOX}/$outboxKey"] = mapOf(
@@ -515,8 +536,11 @@ class ChatLogActivity : AppCompatActivity() {
         val myUid = FirebaseAuth.getInstance().uid ?: return
         val fromId = p0.child("fromId").getValue(String::class.java) ?: return
         if (fromId == myUid) return
-        val hasRead = (p0.child("readAt").getValue(Long::class.java) ?: 0L) > 0
-        if (hasRead) return
+        // Пишем receipt только если поле явно присутствует и равно 0 — иначе
+        // legacy-узлы без readAt получали бы повторную запись при каждом открытии.
+        val hasRead = (p0.child("readAt").getValue(Long::class.java) ?: -1L) > 0
+        val marked = (p0.child("readAt").getValue(Long::class.java) ?: -2L) == 0L
+        if (hasRead || !marked) return
         try {
             markIncomingAsRead(p0.key ?: return)
         } catch (e: Exception) {
@@ -730,6 +754,22 @@ class ChatLogActivity : AppCompatActivity() {
 
     private object TextPreview {
         const val DELETED_PREVIEW = "🚫 Сообщение удалено"
+    }
+
+    /**
+     * Поле-в-поле сериализация ChatMessage в Map для multi-path update.
+     * Нужна, чтобы переписать отдельное поле (readAt) в копии собеседника,
+     * не трогая остальное. null-поля пропускаем — Firebase их всё равно не хранит.
+     */
+    private fun chatMessageToMap(m: ChatMessage): Map<String, Any> {
+        val out = LinkedHashMap<String, Any>()
+        fun put(k: String, v: Any?) { if (v != null) out[k] = v }
+        put("id", m.id); put("text", m.text); put("fromId", m.fromId); put("toId", m.toId)
+        put("timestamp", m.timestamp); put("msgType", m.msgType); put("transferRef", m.transferRef)
+        put("enc", m.enc); put("env", m.env); put("deleted", m.deleted); put("deletedBy", m.deletedBy)
+        put("editedText", m.editedText); put("editTime", m.editTime); put("readAt", m.readAt)
+        put("envEdited", m.envEdited)
+        return out
     }
 
     override fun onDestroy() {
