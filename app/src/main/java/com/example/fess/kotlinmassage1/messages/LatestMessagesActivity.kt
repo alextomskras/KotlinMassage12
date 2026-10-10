@@ -93,13 +93,13 @@ class LatestMessagesActivity : AppCompatActivity() {
 
         val listener = object : ChildEventListener {
             override fun onChildAdded(p0: DataSnapshot, p1: String?) {
-                val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                val chatMessage = ChatMessage.fromSnapshot(p0) ?: return
                 latestMessagesMap[p0.key!!] = chatMessage
                 refreshRecyclerViewMessages()
             }
 
             override fun onChildChanged(p0: DataSnapshot, p1: String?) {
-                val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                val chatMessage = ChatMessage.fromSnapshot(p0) ?: return
                 latestMessagesMap[p0.key!!] = chatMessage
                 refreshRecyclerViewMessages()
             }

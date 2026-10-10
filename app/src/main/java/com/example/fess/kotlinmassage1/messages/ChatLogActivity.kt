@@ -197,7 +197,12 @@ class ChatLogActivity : AppCompatActivity() {
                     markIncomingIfUnread(p0)
                     return
                 }
-                val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                // Десериализуем вручную: getValue(ChatMessage) на E2EE-узлах падает
+                // NumberFormatException (base64 конверта в text/id Firebase пытается
+                // привести к Long) — узел целиком отбрасывался, строка не рисовалась,
+                // receipt не писался. Читаем сырые листы; числовые поля только там,
+                // где формат гарантирован (timestamp/msgType/readAt пишет наш клиент).
+                val chatMessage = snapshotToChatMessage(p0) ?: return
                 if ((chatMessage.text.isNullOrEmpty() || chatMessage.text == "-1") && chatMessage.fromId.isEmpty()) {
                     markIncomingIfUnread(p0)
                     return
@@ -223,7 +228,7 @@ class ChatLogActivity : AppCompatActivity() {
             override fun onChildChanged(p0: DataSnapshot, p1: String?) {
                 // Soft-delete / редактирование / readAt приходят как change узла
                 snapshotKey = p0.key ?: ""
-                val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                val chatMessage = snapshotToChatMessage(p0) ?: return
                 applyNodeChange(p0.key ?: "", chatMessage)
             }
             override fun onChildMoved(p0: DataSnapshot, p1: String?) {}
@@ -245,6 +250,16 @@ class ChatLogActivity : AppCompatActivity() {
     /** Трекер readAt/readReceipt в нашем зеркале диалога. */
     private var readTrackerRef: DatabaseReference? = null
     private var readTracker: ValueEventListener? = null
+
+    /**
+     * Ручная десериализация — тонкая обёртка над ChatMessage.fromSnapshot().
+     * Штатный getValue(ChatMessage::class.java) на E2EE-узлах кидает
+     * NumberFormatException и СЪЕДАЕТ ВЕСЬ УЗЕЛ (base64 конверта в text/id
+     * Firebase пытается привести к Long) — строка не рисовалась, receipt не
+     * писался, галочки у отправителя не менялись. Подробности — в модели.
+     */
+    private fun snapshotToChatMessage(s: DataSnapshot): ChatMessage? =
+        ChatMessage.fromSnapshot(s)
 
     private fun startReadTracker(myUid: String, otherUid: String) {
         stopReadTracker()

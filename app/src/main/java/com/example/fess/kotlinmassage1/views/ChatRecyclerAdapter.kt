@@ -164,7 +164,13 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного
     // сообщения видел «🔒 Нет доступа» вместо текста.
-    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = chatMessage.readAt, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id)
+    // ВАЖНО ПРО ГАЛОЧКИ: у E2EE-сообщений поле text — base64 КОНВЕРТА {enc,epk,alg},
+    // а не открытого текста. Firebase getValue(ChatMessage::class.java) при
+    // десериализации приводит такие строки к Long и падает на NumberFormatException;
+    // после исключения узел приходит с дефолтным readAt=-1 даже если получатель уже
+    // поставил receipt. Поэтому для enc-строк readAt всегда стартует с -1 — живую
+    // галочку рисует read-tracker (applyReadFromMirror), который читает сырой лист.
+    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id)
     isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted)
     else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted)
 }

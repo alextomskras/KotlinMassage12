@@ -68,6 +68,57 @@ class ChatMessage(
     companion object {
         const val TYPE_TEXT = "text"
         const val TYPE_IMAGE = "image"
+
+        /**
+         * Ручная десериализация узла RTDB в ChatMessage через сырые листы.
+         *
+         * Штатный snapshot.getValue(ChatMessage::class.java) на E2EE-записях
+         * кидает NumberFormatException и СЪЕДАЕТ ВЕСЬ УЗЕЛ: Firebase пытается
+         * привести строковые поля к Long/Int, потому что у примитивных полей
+         * модели нет @Exclude — а в text/id/transferRef/env лежит base64
+         * конверта или push-ключ ("-N..."), которые парсятся как числа только
+         * с ошибкой. Узел отбрасывался целиком -> строка не рисовалась, receipt
+         * не писался, галочки у отправителя не менялись. Здесь каждое поле
+         * читается со своим типом и защитой от мусора.
+         */
+        @JvmStatic
+        fun fromSnapshot(s: com.google.firebase.database.DataSnapshot): ChatMessage? {
+            if (!s.exists()) return null
+            fun str(field: String): String = s.child(field).getValue(String::class.java) ?: ""
+            // id может быть числовым только у древних записей — нормализуем в строку
+            val idRaw = s.child("id").value
+            val id = when (idRaw) {
+                is String -> idRaw
+                null -> ""
+                else -> idRaw.toString()
+            }
+            val transferRefRaw = s.child("transferRef").value
+            val envRaw = s.child("env").value
+            val envEditedRaw = s.child("envEdited").value
+            val editedTextRaw = s.child("editedText").value
+            val deletedByRaw = s.child("deletedBy").value
+            return ChatMessage(
+                id = id,
+                text = str("text"),
+                fromId = str("fromId"),
+                toId = str("toId"),
+                timestamp = s.child("timestamp").getValue(Long::class.java) ?: -1L,
+                msgType = s.child("msgType").getValue(String::class.java) ?: TYPE_TEXT,
+                transferRef = when (transferRefRaw) {
+                    is String -> transferRefRaw
+                    is Number -> transferRefRaw.toString()
+                    else -> null
+                },
+                enc = s.child("enc").getValue(Boolean::class.java) ?: false,
+                env = if (envRaw is String) envRaw else null,
+                deleted = s.child("deleted").getValue(Boolean::class.java) ?: false,
+                deletedBy = if (deletedByRaw is String) deletedByRaw else null,
+                editedText = if (editedTextRaw is String) editedTextRaw else null,
+                editTime = s.child("editTime").getValue(Long::class.java) ?: -1L,
+                readAt = s.child("readAt").getValue(Long::class.java) ?: -1L,
+                envEdited = if (envEditedRaw is String) envEditedRaw else null
+            )
+        }
     }
 
     /**
@@ -86,4 +137,5 @@ class ChatMessage(
     /** uid собеседника относительно текущего пользователя. */
     fun partnerId(myUid: String?): String =
         if (fromId == myUid) toId else fromId
+
 }
