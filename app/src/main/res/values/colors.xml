@@ -3,4 +3,8 @@
     <color name="colorPrimary">#3F51B5</color>
     <color name="colorPrimaryDark">#303F9F</color>
     <color name="colorAccent">#FF4081</color>
+    <color name="bubble_out">#DCF8C6</color>
+    <color name="bubble_in">#FFFFFF</color>
+    <color name="tick_read">#1E88FF</color>
+    <color name="tick_sent">#9E9E9E</color>
 </resources>

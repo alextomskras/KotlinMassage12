@@ -29,6 +29,7 @@ import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.example.fess.kotlinmassage1.views.ChatRecyclerAdapter
 import com.example.fess.kotlinmassage1.views.chatItemFor
 import java.text.SimpleDateFormat
@@ -87,6 +88,30 @@ class ChatLogActivity : AppCompatActivity() {
         CryptoBridge.warmPartnerKey(partner.uid)
 
         listenForMessages()
+
+        // Долгое нажатие на СВОЁ текстовое сообщение -> «Изменить / Удалить для всех».
+        adapter.onItemLongClickListener = { _, item ->
+            val mine = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
+                (item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) ||
+                (item is com.example.fess.kotlinmassage1.views.KartinkaFromItem)
+            if (!mine) return@onItemLongClickListener false
+            // Для картинок — только удаление; для текста — правка + удаление.
+            when (item) {
+                is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
+                    confirmDeleteImage(item.dbId.ifEmpty { item.msgId })
+                else -> showMyMessageMenu(
+                    plain = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.plainForEditing()
+                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.plainForEditing(),
+                    editable = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
+                        item is com.example.fess.kotlinmassage1.views.TextItem,
+                    nodeKey = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.dbId
+                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.dbId ?: "",
+                    mirrorMsgId = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.msgId
+                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.msgId ?: ""
+                )
+            }
+            true
+        }
 
         findViewById<Button>(R.id.send_button_chat_log).setOnClickListener {
             performSendMessage()
@@ -151,8 +176,22 @@ class ChatLogActivity : AppCompatActivity() {
         val ts = if (chatMessage.timestamp > 0) chatMessage.timestamp else System.currentTimeMillis() / 1000
         val timeStr = TIME_FORMAT.format(Date(ts * 1000))
         val user = if (isIncoming) toUser!! else (LatestMessagesActivity.currentUser ?: toUser!!)
-        return chatItemFor(chatMessage, user, isIncoming, timeStr)
+        val item = chatItemFor(chatMessage, user, isIncoming, timeStr)
+        // Ключ узла в НАШЕМ зеркале отличается от chatMessage.id (тот — id в зеркале
+        // автора). Нужен для пересборки строки по onChildChanged и для readAt.
+        when (item) {
+            is com.example.fess.kotlinmassage1.views.TextItem -> item.dbId = snapshotKey
+            is com.example.fess.kotlinmassage1.views.DeletedTextItem -> item.dbId = snapshotKey
+            is com.example.fess.kotlinmassage1.views.ChatFromItem -> item.dbId = snapshotKey
+            is com.example.fess.kotlinmassage1.views.ChatToItem -> item.dbId = snapshotKey
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.dbId = snapshotKey
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.dbId = snapshotKey
+        }
+        return item
     }
+
+    /** Ключ последнего обработанного снапшота (id сообщения в нашем зеркале). */
+    private var snapshotKey: String = ""
 
     private fun listenForMessages() {
         val fromId = FirebaseAuth.getInstance().uid ?: return
@@ -166,18 +205,57 @@ class ChatLogActivity : AppCompatActivity() {
                 // (например {"delivered": true}) -> клиент рисовал пустое
                 // сообщение с датой 01.01.1970. Такие узлы игнорируем.
                 if (!p0.hasChild("text") && !p0.hasChild("fromId")) return
+                snapshotKey = p0.key ?: ""
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
                 if ((chatMessage.text.isNullOrEmpty() || chatMessage.text == "-1") && chatMessage.fromId.isEmpty()) return
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
                 adapter.append(buildChatItem(chatMessage, isIncoming))
                 scrollToBottom()
+                // Read receipt: входящее и ещё не отмеченное -> ставим readAt
+                // В СВОЁМ зеркале (/user-messages/{me}/{partner}/{msgId});
+                // отправитель подтянет это своим read-listener'ом.
+                if (isIncoming && chatMessage.readAt <= 0) {
+                    markIncomingAsRead(snapshotKey)
+                }
             }
 
             override fun onCancelled(p0: DatabaseError) {
                 Log.w(TAG, "messages listener cancelled: ${p0.message}")
             }
 
-            override fun onChildChanged(p0: DataSnapshot, p1: String?) {}
+            override fun onChildChanged(p0: DataSnapshot, p1: String?) {
+                // Soft-delete / редактирование / readAt приходят как change узла
+                snapshotKey = p0.key ?: ""
+                val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
+                val pos = adapter.findRowPosition(p0.key ?: "")
+                if (pos < 0) return
+                // Точечно обновляем живые свойства строки (без полной пересборки):
+                when (val item = adapter.itemAt(pos)) {
+                    is com.example.fess.kotlinmassage1.views.ChatFromItem -> {
+                        item.readAt = chatMessage.readAt
+                        item.editTime = chatMessage.editTime
+                        item.editedText = chatMessage.editedText
+                        item.envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env
+                        item.deleted = chatMessage.deleted
+                    }
+                    is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> {
+                        item.readAt = chatMessage.readAt
+                        item.deleted = chatMessage.deleted
+                    }
+                    is com.example.fess.kotlinmassage1.views.KartinkaToItem -> {
+                        item.deleted = chatMessage.deleted
+                    }
+                    is com.example.fess.kotlinmassage1.views.ChatToItem -> {
+                        item.deleted = chatMessage.deleted
+                    }
+                    is com.example.fess.kotlinmassage1.views.TextItem -> {
+                        item.readAt = chatMessage.readAt
+                        item.editTime = chatMessage.editTime
+                        item.deleted = chatMessage.deleted
+                    }
+                }
+                adapter.updateAt(pos)
+            }
             override fun onChildMoved(p0: DataSnapshot, p1: String?) {}
             override fun onChildRemoved(p0: DataSnapshot) {}
         }
@@ -361,6 +439,187 @@ class ChatLogActivity : AppCompatActivity() {
         val text = findViewById<EditText>(R.id.edittext_chat_log).text.toString()
         if (text.isEmpty()) return
         writeMessage(text, ChatMessage.TYPE_TEXT)
+    }
+
+    /**
+     * Read receipt: получатель отмечает входящее сообщение прочитанным — пишет
+     * readAt только в свою копию зеркала (правила RTDB: запись в свой узел).
+     * Отправитель видит change через свой ChildEventListener и красит двойную
+     * синюю галочку. Идемпотентно: повторная отметка не пишется.
+     */
+    private fun markIncomingAsRead(nodeKey: String) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        if (nodeKey.isEmpty()) return
+        FirebaseDatabase.getInstance().reference
+            .child("${DbPaths.conversation(myUid, otherUid)}/$nodeKey/readAt")
+            .setValue(System.currentTimeMillis() / 1000)
+            .addOnFailureListener { e -> Log.w(TAG, "readAt write failed: ${e.message}") }
+    }
+
+    /**
+     * Долгое нажатие на своё текстовое сообщение: «Изменить» / «Удалить».
+     * Удаление — soft: deleted=true во всех копиях (моё зеркало + зеркало
+     * собеседника + latest x2), физическую чистку делает backend cleanup.
+     */
+    private fun showMyMessageMenu(plain: String?, editable: Boolean, nodeKey: String, mirrorMsgId: String) {
+        val options = if (editable) arrayOf("✏️ Изменить", "🗑 Удалить для всех")
+                      else arrayOf("🗑 Удалить для всех")
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setItems(options) { _, which ->
+                val idx = if (editable) which else which + 1
+                when (idx) {
+                    0 -> startEditMessage(plain, nodeKey, mirrorMsgId)
+                    else -> softDeleteMessage(nodeKey, mirrorMsgId)
+                }
+            }
+            .show()
+    }
+
+    private fun confirmDeleteImage(nodeKey: String) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setMessage("Удалить картинку для всех?")
+            .setPositiveButton("Удалить") { _, _ -> softDeleteMessage(nodeKey, nodeKey) }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun startEditMessage(plain: String?, nodeKey: String, mirrorMsgId: String) {
+        val input = android.widget.EditText(this).apply {
+            setText(plain ?: "")
+            setSelection(length())
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Изменить сообщение")
+            .setView(input)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val newText = input.text.toString()
+                if (newText.isNotEmpty()) applyMessageEdit(nodeKey, mirrorMsgId, newText)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    /** Правка текста: перешифровываем НОВЫЙ эфемерный конверт под pubkey получателя
+     *  (+ свежее selfless-зеркало себе) и пишем editedText/editTime/envEdited в обе копии. */
+    private fun applyMessageEdit(nodeKey: String, mirrorMsgId: String, newText: String) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        if (nodeKey.isEmpty()) return
+        val db = FirebaseDatabase.getInstance().reference
+        // Новый эфемерный конверт генерируем под НОВЫМ msgId (уникальный push-key):
+        // AAD конверта привязан к msgId, старый id занят оригиналом.
+        val newEnvId = db.push().key ?: return
+        CryptoBridge.encryptTextForSend(
+            this, otherUid, newText, newEnvId,
+            onReady = { envelopeB64 ->
+                // encryptTextForSend уже положил свежее selfless-зеркало в кэш —
+                // забираем его для поля envEdited (нужно, чтобы самому видеть правку).
+                val mirror = CryptoBridge.peekTextMirror(newEnvId) ?: ""
+                val ts = System.currentTimeMillis() / 1000
+                // ВАЖНО: у каждой стороны свой ключ узла (push-id при двойной записи).
+                // nodeKey — ключ В НАШЕМ зеркале; в зеркале собеседника ищем его узел
+                // по полю id == mirrorMsgId (авторское id совпадает в обеих копиях).
+                val updates = mapOf<String, Any>(
+                    "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editedText" to envelopeB64,
+                    "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editTime" to ts,
+                    "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/envEdited" to mirror
+                )
+                db.updateChildren(updates)
+                    .addOnSuccessListener { syncEditToPartnerMirror(mirrorMsgId, envelopeB64, ts) }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(this, "Правка не сохранена: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            },
+            onFallback = { reason ->
+                Log.w(TAG, "edit E2EE fallback: $reason")
+                // plaintext-правка (получатель без pubkey): то же, но без env
+                val ts = System.currentTimeMillis() / 1000
+                val updates = mapOf<String, Any>(
+                    "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editedText" to newText,
+                    "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/editTime" to ts
+                )
+                db.updateChildren(updates).addOnSuccessListener {
+                    syncEditToPartnerMirror(mirrorMsgId, newText, ts)
+                }
+            }
+        )
+    }
+
+    /** Soft-delete своего сообщения: флаг deleted во всех копиях + relay-ноде. */
+    private fun softDeleteMessage(nodeKey: String, mirrorMsgId: String) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        if (nodeKey.isEmpty()) return
+        val db = FirebaseDatabase.getInstance().reference
+        val now = System.currentTimeMillis() / 1000
+        val updates = mapOf<String, Any>(
+            "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/deleted" to true,
+            "${DbPaths.conversation(myUid, otherUid)}/$nodeKey/deletedBy" to myUid,
+            // превью в latest тоже прячем
+            "${DbPaths.latestConversation(myUid, otherUid)}/deleted" to true,
+            "${DbPaths.latestConversation(otherUid, myUid)}/deleted" to true,
+            // relay-тело картинки помечаем сразу (cleanup снесёт раньше TTL)
+            // relay-тело картинки помечаем по авторскому id (transferRef = id автора)
+            "${DbPaths.transfer(mirrorMsgId)}/deleted" to true,
+            "${DbPaths.transfer(mirrorMsgId)}/expiresAt" to now
+        )
+        db.updateChildren(updates)
+            .addOnSuccessListener {
+                // Превью списка чатов: текст прячем сразу (список читает эти узлы).
+                db.child(DbPaths.latestConversation(myUid, otherUid)).child("text").setValue(TextPreview.DELETED_PREVIEW)
+                db.child(DbPaths.latestConversation(otherUid, myUid)).child("text").setValue(TextPreview.DELETED_PREVIEW)
+                syncDeleteToPartnerMirror(mirrorMsgId)
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Не удалось удалить: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    /**
+     * Зеркало собеседника хранит копию под СВОИМ ключом узла, но поле id там
+     * совпадает с авторским msgId (пишется релеем/клиентом автора). Ищем узел по
+     * id и ставим deleted/edit-поля туда. Не нашли (старые данные) — тихо пропускаем:
+     * получатель всё равно увидит заглушку после перечитывания, когда реле
+     * синхронизирует копию.
+     */
+    private fun syncDeleteToPartnerMirror(mirrorMsgId: String) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        FirebaseDatabase.getInstance().reference
+            .child(DbPaths.conversation(otherUid, myUid))
+            .orderByChild("id").equalTo(mirrorMsgId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(p0: DataSnapshot) {
+                    val upd = HashMap<String, Any>()
+                    for (c in p0.children) upd["${DbPaths.conversation(otherUid, myUid)}/${c.key}/deleted"] = true
+                    if (upd.isNotEmpty()) FirebaseDatabase.getInstance().reference.updateChildren(upd)
+                }
+                override fun onCancelled(p0: DatabaseError) {}
+            })
+    }
+
+    private fun syncEditToPartnerMirror(mirrorMsgId: String, editedEnvelope: String, ts: Long) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val otherUid = toUser?.uid ?: return
+        FirebaseDatabase.getInstance().reference
+            .child(DbPaths.conversation(otherUid, myUid))
+            .orderByChild("id").equalTo(mirrorMsgId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(p0: DataSnapshot) {
+                    val upd = HashMap<String, Any>()
+                    for (c in p0.children) {
+                        upd["${DbPaths.conversation(otherUid, myUid)}/${c.key}/editedText"] = editedEnvelope
+                        upd["${DbPaths.conversation(otherUid, myUid)}/${c.key}/editTime"] = ts
+                    }
+                    if (upd.isNotEmpty()) FirebaseDatabase.getInstance().reference.updateChildren(upd)
+                }
+                override fun onCancelled(p0: DatabaseError) {}
+            })
+    }
+
+    private object TextPreview {
+        const val DELETED_PREVIEW = "🚫 Сообщение удалено"
     }
 
     override fun onDestroy() {

@@ -21,6 +21,17 @@
         app:layout_constraintTop_toTopOf="parent"
         android:background="@drawable/image_placeholder" />
 
+    <ImageView
+        android:id="@+id/imageview_msg_status_img"
+        android:layout_width="18dp"
+        android:layout_height="12dp"
+        android:src="@drawable/ic_check_single"
+        android:contentDescription="@null"
+        app:tint="@color/tick_sent"
+        app:layout_constraintBottom_toBottomOf="@+id/textView_message_time"
+        app:layout_constraintTop_toTopOf="@+id/textView_message_time"
+        app:layout_constraintEnd_toStartOf="@+id/textView_message_time" />
+
     <TextView
         android:id="@+id/textView_message_time"
         android:layout_width="wrap_content"

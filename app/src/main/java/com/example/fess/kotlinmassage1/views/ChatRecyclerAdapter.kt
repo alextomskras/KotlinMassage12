@@ -23,6 +23,9 @@ class ChatRecyclerAdapter(
 
     var onItemClickListener: ((ChatRowDelegate) -> Unit)? = null
 
+    /** Долгое нажатие на строку (позиция + делегат) — меню «Изменить/Удалить». */
+    var onItemLongClickListener: ((Int, ChatRowDelegate) -> Boolean)? = null
+
     /** Источник контекста активити для строк (нужен локальному кэшу картинок). */
     var rowContextProvider: (() -> android.content.Context?)? = null
 
@@ -30,6 +33,44 @@ class ChatRecyclerAdapter(
         item.rowContext = rowContextProvider?.invoke()
         items.add(item)
         notifyItemInserted(items.size - 1)
+    }
+
+    /** Точечное обновление строки (readAt / deleted / edited) без пересборки всего списка. */
+    fun updateAt(position: Int) {
+        if (position in items.indices) notifyItemChanged(position)
+    }
+
+    /** Позиция исходящего текстового сообщения по его msgId (-1 если не найдено). */
+    fun findOutgoingTextPosition(msgId: String): Int {
+        for (i in items.indices) {
+            val it = items[i]
+            if (it is ChatFromItem && it.msgId == msgId) return i
+        }
+        return -1
+    }
+
+    /** Все исходящие текстовые строки (для массовой отметки readAt из read-listener'а). */
+    fun outgoingTextItems(): List<Pair<Int, ChatFromItem>> =
+        items.mapIndexedNotNull { i, d -> if (d is ChatFromItem) i to d else null }
+
+    /** Строка по позиции (для long-press меню). */
+    fun itemAt(position: Int): ChatRowDelegate? = items.getOrNull(position)
+
+    /** Позиция строки по ключу узла В ЗЕРКАЛЕ ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ (dbId). */
+    fun findRowPosition(dbId: String): Int {
+        for (i in items.indices) {
+            val found = when (val d = items[i]) {
+                is TextItem -> d.dbId == dbId
+                is DeletedTextItem -> d.dbId == dbId
+                is ChatFromItem -> d.dbId == dbId
+                is ChatToItem -> d.dbId == dbId
+                is KartinkaFromItem -> d.dbId == dbId
+                is KartinkaToItem -> d.dbId == dbId
+                else -> false
+            }
+            if (found) return i
+        }
+        return -1
     }
 
     fun submit(newItems: List<ChatRowDelegate>) {
@@ -62,6 +103,14 @@ class ChatRecyclerAdapter(
                 onItemClickListener?.invoke(items[idx])
             }
         }
+        holder.itemView.setOnLongClickListener {
+            val idx = holder.bindingAdapterPosition
+            if (idx != RecyclerView.NO_POSITION && idx < items.size) {
+                val cb = onItemLongClickListener
+                if (cb != null) return@setOnLongClickListener cb(idx, items[idx])
+            }
+            false
+        }
     }
 }
 
@@ -78,6 +127,8 @@ interface ChatRowDelegate {
 
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */
 fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeStr: String): ChatRowDelegate = when {
+    // Soft-delete: любой тип -> одна и та же заглушка (контент не показываем).
+    chatMessage.deleted -> DeletedTextItem(timeStr, user, isIncoming).apply { dbId = chatMessage.id }
     chatMessage.type == ChatMessage.TYPE_IMAGE && isIncoming ->
         // payload = text: для E2EE-картинок в text лежит base64 КОНВЕРТА {enc,epk,alg},
         // а не картинки — isImagePayload(text) вернёт false, так что ложное срабатывание
@@ -85,12 +136,12 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
         // это единственный путь показа.
         KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env)
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
-        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env)
+        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, readAt = chatMessage.readAt)
     // E2EE: enc-сообщение читают СВОИМ приватником обе стороны диалога — и
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного
     // сообщения видел «🔒 Нет доступа» вместо текста.
-    chatMessage.enc -> TextItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = chatMessage.env)
-    isIncoming -> ChatToItem(chatMessage.text, user, timeStr)
-    else -> ChatFromItem(chatMessage.text, user, timeStr)
+    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = chatMessage.readAt, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id)
+    isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted)
+    else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted)
 }

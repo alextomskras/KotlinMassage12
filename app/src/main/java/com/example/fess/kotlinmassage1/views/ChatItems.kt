@@ -18,7 +18,21 @@ class ChatFromItem(
     val text: String,
     val user: User,
     val time: String,
-    private val encMsgId: String? = null
+    /** Новый текст после правки (>null => показываем его + «изменено»). */
+    var editedText: String? = null,
+    private val encMsgId: String? = null,
+    /** id сообщения в зеркале MY uid — нужен для записи readAt собеседнику. */
+    var msgId: String = "",
+    /** Прочтено ли собеседником (readAt > 0) — рисует двойную синюю галочку. */
+    var readAt: Long = -1,
+    /** Время правки (>0 => показываем «изменено»). */
+    var editTime: Long = -1,
+    /** Selfless-конверт для чтения своего текста (E2EE). */
+    var envMirror: String? = null,
+    /** Ключ узла в зеркале текущего пользователя. */
+    var dbId: String = "",
+    /** Soft-delete: рисуем заглушку вместо текста. */
+    var deleted: Boolean = false
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -27,12 +41,45 @@ class ChatFromItem(
     override fun layoutRes(): Int = R.layout.chat_from_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = displayText(text, encMsgId)
-        viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_from_message_time2).text = time
+        if (deleted) {
+            viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = TextItem.DELETED_LABEL
+        } else {
+            // Plaintext -> как есть; E2EE -> selfless-зеркало из env/envEdited
+            // (displayText не годится: эфемерный конверт своим static-ключом не читается).
+            val shown = plainForEditing() ?: displayText(editedText ?: text, encMsgId)
+            viewHolder.itemView.findViewById<TextView>(R.id.textview_from_row).text = shown
+        }
+        viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_from_message_time2).text = time + editedSuffix()
+        applyTick(viewHolder)
         ImageLoader.loadAvatarInto(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_from_row)
         )
+    }
+
+    /** Открытый текст для диалога правки (plaintext или selfless-зеркало из env). */
+    fun plainForEditing(): String? =
+        com.example.fess.kotlinmassage1.util.CryptoBridge.plainForSender(msgId, editedText ?: text, envMirror)
+
+    /** Пометка «изменено» после времени (редактирование текста). */
+    private fun editedSuffix(): String = if (editTime > 0) " · изменено" else ""
+
+    /**
+     * Галочки статуса исходящего сообщения: одна серая — отправлено,
+     * две синие — прочтено собеседником (readAt проставляет получатель,
+     * см. ChatLogActivity.markIncomingAsRead / readTracker).
+     */
+    fun applyTick(viewHolder: RecyclerView.ViewHolder) {
+        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status) ?: return
+        if (readAt > 0) {
+            tick.setImageResource(R.drawable.ic_check_double)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(
+                tick.context, R.color.tick_read))
+        } else {
+            tick.setImageResource(R.drawable.ic_check_single)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(
+                tick.context, R.color.tick_sent))
+        }
     }
 }
 
@@ -40,7 +87,12 @@ class ChatToItem(
     val text: String,
     val user: User,
     val time: String,
-    private val encMsgId: String? = null
+    private val encMsgId: String? = null,
+    val msgId: String = "",
+    /** Soft-delete: заглушка вместо контента. */
+    var deleted: Boolean = false,
+    /** Ключ узла в зеркале текущего пользователя. */
+    var dbId: String = ""
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -49,7 +101,11 @@ class ChatToItem(
     override fun layoutRes(): Int = R.layout.chat_to_row
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
-        viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = displayText(text, encMsgId)
+        if (deleted) {
+            viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = TextItem.DELETED_LABEL
+        } else {
+            viewHolder.itemView.findViewById<TextView>(R.id.textview_to_row).text = displayText(text, encMsgId)
+        }
         viewHolder.itemView.findViewById<TextView>(R.id.textView_chat_to_message_time2).text = time
         ImageLoader.loadAvatarInto(
             user.profileImageUrl,
@@ -86,7 +142,15 @@ class TextItem(
     val time: String,
     val msgId: String,
     private val isIncoming: Boolean = false,
-    private val envMirror: String? = null
+    private val envMirror: String? = null,
+    /** Прочтено собеседником (для исходящих; readAt из БД). */
+    var readAt: Long = -1,
+    /** Время правки (>0 => «изменено»). */
+    var editTime: Long = -1,
+    /** Soft-delete: рисуем заглушку вместо контента. */
+    var deleted: Boolean = false,
+    /** id сообщения в ЗЕРКАЛЕ ПОЛЬЗОВАТЕЛЯ (отличается от msgId у зеркал собеседника). */
+    var dbId: String = ""
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -98,6 +162,19 @@ class TextItem(
         val textId = if (isIncoming) R.id.textview_to_row else R.id.textview_from_row
         val timeId = if (isIncoming) R.id.textView_chat_to_message_time2 else R.id.textView_chat_from_message_time2
         val avatarId = if (isIncoming) R.id.imageview_chat_to_row else R.id.imageview_chat_from_row
+        if (deleted) {
+            viewHolder.itemView.findViewById<TextView>(textId).text = DELETED_LABEL
+            viewHolder.itemView.findViewById<TextView>(timeId).text = time
+        } else if (!isIncoming) {
+            // Исходящее E2EE: показываем ЧИТАЕМЫЙ текст (plaintext или selfless-
+            // зеркало из env). Раньше здесь был вызов decryptText эфемерным путём —
+            // он заведомо падал (эфемерида не сохраняется), и отправитель видел
+            // «🔒 Нет доступа» даже когда зеркало живо.
+            val plain = com.example.fess.kotlinmassage1.util.CryptoBridge.plainForSender(msgId, text, envMirror)
+            viewHolder.itemView.findViewById<TextView>(textId).text = plain ?: DECRYPT_FAIL_LABEL
+            viewHolder.itemView.findViewById<TextView>(timeId).text =
+                time + if (editTime > 0) " · изменено" else ""
+        } else {
         // Входящее: эфемерный конверт из text читается НАШИМ static-приватником
         // (ECDH с epk). Исходящее: эфемерида отправителем не сохраняется и чужим
         // ключом не расшифровывается — читаем selfless-зеркало из env своим же
@@ -112,8 +189,35 @@ class TextItem(
             } ?: "🔒 Нет доступа к сообщению"
         }
         viewHolder.itemView.findViewById<TextView>(textId).text = shown
-        viewHolder.itemView.findViewById<TextView>(timeId).text = time
+        viewHolder.itemView.findViewById<TextView>(timeId).text =
+            time + if (editTime > 0) " · изменено" else ""
+        }
         ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
+        // Галочки статуса есть только в исходящем layout.
+        if (!isIncoming) {
+            val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status)
+            if (tick != null) {
+                if (readAt > 0) {
+                    tick.setImageResource(R.drawable.ic_check_double)
+                    tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
+                } else {
+                    tick.setImageResource(R.drawable.ic_check_single)
+                    tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
+                }
+            }
+        }
+    }
+
+    /** true если строка — входящее сообщение (для long-press фильтра «только свои»). */
+    fun isIncomingForMenu(): Boolean = isIncoming
+
+    /** Открытый текст для диалога правки (только для исходящих). */
+    fun plainForEditing(): String? =
+        com.example.fess.kotlinmassage1.util.CryptoBridge.plainForSender(msgId, text, envMirror)
+
+    companion object {
+        const val DELETED_LABEL = "🚫 Сообщение удалено"
+        const val DECRYPT_FAIL_LABEL = "🔒 Нет доступа к сообщению"
     }
 }
 
@@ -129,7 +233,13 @@ class KartinkaFromItem(
     val time: String,
     val msgId: String = "",
     val transferRef: String? = null,
-    val envJson: String? = null
+    val envJson: String? = null,
+    /** Прочтено собеседником (для исходящих). */
+    var readAt: Long = -1,
+    /** Soft-delete: рисуем заглушку вместо картинки. */
+    var deleted: Boolean = false,
+    /** Ключ узла в зеркале текущего пользователя. */
+    var dbId: String = ""
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -142,7 +252,10 @@ class KartinkaFromItem(
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_from_row2)
         val ctx = rowContext
-        when {
+        if (deleted) {
+            image.setImageResource(R.drawable.image_expired)
+            image.setOnClickListener(null)
+        } else when {
             !transferRef.isNullOrEmpty() && ctx != null ->
                 ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson, isOutgoing = true)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
@@ -150,9 +263,21 @@ class KartinkaFromItem(
         }
 
         // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
-        image.setOnClickListener {
+        if (!deleted) image.setOnClickListener {
             val c = ctx ?: image.context
             com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson, isOutgoing = true).show()
+        }
+
+        // Галочки статуса (одна серая / две синие).
+        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status_img)
+        if (tick != null) {
+            if (readAt > 0) {
+                tick.setImageResource(R.drawable.ic_check_double)
+                tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
+            } else {
+                tick.setImageResource(R.drawable.ic_check_single)
+                tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
+            }
         }
 
         ImageLoader.loadAvatarInto(
@@ -168,7 +293,11 @@ class KartinkaToItem(
     val time: String,
     val msgId: String = "",
     val transferRef: String? = null,
-    val envJson: String? = null
+    val envJson: String? = null,
+    /** Soft-delete: рисуем заглушку вместо картинки. */
+    var deleted: Boolean = false,
+    /** Ключ узла в зеркале текущего пользователя. */
+    var dbId: String = ""
 ) : ChatRowDelegate {
 
     override val chatPartnerUser: User? get() = user
@@ -181,7 +310,10 @@ class KartinkaToItem(
 
         val image = viewHolder.itemView.findViewById<ImageView>(R.id.kartinka_chat_to_row2)
         val ctx = rowContext
-        when {
+        if (deleted) {
+            image.setImageResource(R.drawable.image_expired)
+            image.setOnClickListener(null)
+        } else when {
             !transferRef.isNullOrEmpty() && ctx != null ->
                 ImageLoader.loadTransferToView(ctx, transferRef, com.google.firebase.auth.FirebaseAuth.getInstance().uid, image, maxSide = 300, payload = text, envJson = envJson)
             ImageUtils.isImagePayload(text) -> ImageLoader.loadBase64ToView(text, image, maxSide = 300)
@@ -189,7 +321,7 @@ class KartinkaToItem(
         }
 
         // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
-        image.setOnClickListener {
+        if (!deleted) image.setOnClickListener {
             val c = ctx ?: image.context
             com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson).show()
         }
@@ -198,5 +330,32 @@ class KartinkaToItem(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row2)
         )
+    }
+}
+
+/**
+ * Строка soft-deleted сообщения (любого исходного типа): заглушка
+ * «Сообщение удалено» в обычном пузыре. Контент не показываем и не дешифруем —
+ * даже если шифртекст ещё живёт в БД до серверного cleanup.
+ */
+class DeletedTextItem(
+    val time: String,
+    val user: User,
+    private val isIncoming: Boolean = false,
+    var dbId: String = ""
+) : ChatRowDelegate {
+
+    override val chatPartnerUser: User? get() = user
+    override var rowContext: android.content.Context? = null
+
+    override fun layoutRes(): Int = if (isIncoming) R.layout.chat_to_row else R.layout.chat_from_row
+
+    override fun bindTo(viewHolder: RecyclerView.ViewHolder, position: Int) {
+        val textId = if (isIncoming) R.id.textview_to_row else R.id.textview_from_row
+        val timeId = if (isIncoming) R.id.textView_chat_to_message_time2 else R.id.textView_chat_from_message_time2
+        val avatarId = if (isIncoming) R.id.imageview_chat_to_row else R.id.imageview_chat_from_row
+        viewHolder.itemView.findViewById<TextView>(textId).text = TextItem.DELETED_LABEL
+        viewHolder.itemView.findViewById<TextView>(timeId).text = time
+        ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
     }
 }

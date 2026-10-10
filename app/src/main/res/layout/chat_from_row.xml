@@ -14,10 +14,25 @@
         android:layout_marginStart="8dp"
         android:text="This is my message that will wrap into multiple lines and keep on going"
         android:maxWidth="240dp"
-        android:background="@drawable/rounded_edittext_register_login"
+        android:background="@drawable/bubble_out"
         android:padding="16dp"
         app:layout_constraintStart_toEndOf="@+id/imageview_chat_from_row"
         app:layout_constraintTop_toTopOf="@+id/imageview_chat_from_row" />
+
+    <!-- Статус доставки/прочтения: одна серая галочка = отправлено,
+         две синие = прочтено собеседником (см. ChatLogActivity.readTracker). -->
+    <ImageView
+        android:id="@+id/imageview_msg_status"
+        android:layout_width="18dp"
+        android:layout_height="12dp"
+        android:src="@drawable/ic_check_single"
+        android:contentDescription="@null"
+        app:tint="@color/tick_sent"
+        app:layout_constraintBottom_toBottomOf="@+id/textView_chat_from_message_time2"
+        app:layout_constraintTop_toTopOf="@+id/textView_chat_from_message_time2"
+        app:layout_constraintEnd_toStartOf="@+id/textView_chat_from_message_time2"
+        app:layout_constraintHorizontal_chainStyle="packed"
+        app:layout_constraintStart_toStartOf="@+id/textview_from_row" />
 
     <TextView
         android:id="@+id/textView_chat_from_message_time2"
@@ -28,6 +43,7 @@
         android:textSize="12sp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="@+id/textview_from_row"
+        app:layout_constraintStart_toEndOf="@+id/imageview_msg_status"
         app:layout_constraintTop_toBottomOf="@+id/textview_from_row"
         app:layout_goneMarginEnd="8dp" />
 

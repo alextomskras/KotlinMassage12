@@ -35,7 +35,35 @@ class ChatMessage(
      * конверта (epk+enc) дублируются в зеркало диалога. Есть поле — картинку
      * можно расшифровать и после удаления relay-ноды (decryptImageFromMessage).
      */
-    val env: String? = null
+    val env: String? = null,
+    /**
+     * Soft-delete («удалить для всех»): физически запись НЕ удаляется, ставится
+     * флаг deleted=true (+ deletedBy = uid инициатора). Клиенты видят флаг и
+     * рисуют заглушку «Сообщение удалено». Серверный cleanup (backend) сносит
+     * такие записи через N дней.
+     */
+    val deleted: Boolean = false,
+    val deletedBy: String? = null,
+    /**
+     * Редактирование текста: [editedText] — новый шифртекст/открытый текст,
+     * [editTime] — время правки (сек). Оригинал остаётся в [text] (история);
+     * UI показывает editedText с пометкой «изменено». Для E2EE правка
+     * перешифровывается заново под pubkey получателя.
+     */
+    val editedText: String? = null,
+    val editTime: Long = -1,
+    /**
+     * Read receipt: unix-время (сек), когда СОБЕСЕДНИК открыл диалог и увидел
+     * сообщение. Пишет получатель в свою копию зеркала (/user-messages/{toId}/...),
+     * отправитель подтягивает его read-listener'ом и рисует двойную синюю галочку.
+     */
+    val readAt: Long = -1,
+    /**
+     * E2EE-правка текста: после редактирования в [editedText] лежит НОВЫЙ
+     * эфемерный конверт, а selfless-зеркало отправителя — здесь (старое [env]
+     * относится к оригинальному тексту и для правки непригодно).
+     */
+    val envEdited: String? = null
 ) {
     companion object {
         const val TYPE_TEXT = "text"

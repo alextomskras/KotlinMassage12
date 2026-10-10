@@ -81,10 +81,34 @@ object CryptoBridge {
     /** Неудаляющее чтение зеркала — для записи в БД (см. confirmTextMirror). */
     fun peekTextMirror(msgId: String): String? = pendingTextMirrors[msgId]
 
+    /** Запись готового selfless-конверта в кэш зеркал (правка текста: envEdited). */
+    fun storeTextMirror(msgId: String, mirrorB64: String) {
+        pendingTextMirrors[msgId] = mirrorB64
+    }
+
     /** Зеркало остаётся в кэше; вызывается при onDisconnect(keepInSync=false) после записи. */
     fun confirmTextMirror(msgId: String) {
         pendingTextMirrors.remove(msgId)
     }
+
+    /**
+     * Читаемый текст ИСХОДЯЩЕГО сообщения для самого отправителя:
+     *  - plaintext (enc=false) -> как есть;
+     *  - E2EE -> selfless-зеркало из env (в т.ч. envEdited после правки);
+     *  - ничего не подошло -> null (вызывающий рисует заглушку).
+     */
+    fun plainForSender(msgId: String, envelopeB64: String, mirrorB64: String?): String? {
+        if (mirrorB64.isNullOrEmpty()) {
+            // Не E2EE (fallback-клиент): в text лежит открытый текст, если это НЕ base64-конверт.
+            return if (!looksLikeEnvelope(envelopeB64)) envelopeB64 else null
+        }
+        return decryptTextFromEnv(msgId, mirrorB64)
+    }
+
+    private fun looksLikeEnvelope(b64: String): Boolean = try {
+        val json = org.json.JSONObject(String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT)))
+        json.has("enc") && json.has("epk")
+    } catch (e: Exception) { false }
 
     /**
      * Расшифровывает msg.text, если msg.enc==true. Возвращает plain text или null
