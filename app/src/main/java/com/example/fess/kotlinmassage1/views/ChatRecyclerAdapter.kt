@@ -311,7 +311,11 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
     // после исключения узел приходит с дефолтным readAt=-1 даже если получатель уже
     // поставил receipt. Поэтому для enc-строк readAt всегда стартует с -1 — живую
     // галочку рисует read-tracker (applyReadFromMirror), который читает сырой лист.
-    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, deliveredAt = chatMessage.deliveredAt, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id, replyPreview = chatMessage.replyPreview)
+    // ВАЖНО: readAt берём из снапшота, а НЕ захардкодим -1. Для E2EE-строк
+    // статусная галка рисуется только если строка знает своё время прочтения;
+    // с -1 при каждом notifyDataSetChanged() трекер сбрасывал проставленные
+    // receipt'ы обратно в серую галку («галочка так и осталась серой»).
+    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = chatMessage.readAt, deliveredAt = chatMessage.deliveredAt, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id, replyPreview = chatMessage.replyPreview)
     isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
     else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, deliveredAt = chatMessage.deliveredAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
 }
