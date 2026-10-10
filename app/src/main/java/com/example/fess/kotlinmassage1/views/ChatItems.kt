@@ -259,10 +259,23 @@ class KartinkaFromItem(
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
 
-        // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
-        if (!deleted) image.setOnClickListener {
-            val c = ctx ?: image.context
-            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson, isOutgoing = true).show()
+        // Тап по миниатюре — полноэкранный просмотр с зумом и hero-переходом
+        // (миниатюра «разлетается» в полный экран через SharedElementTransition).
+        if (!deleted) {
+            com.example.fess.kotlinmassage1.util.HeroTransition.armHero(image, msgId.ifEmpty { transferRef })
+            image.setOnClickListener {
+                val activity = (ctx as? android.app.Activity) ?: (image.context as? android.app.Activity)
+                if (activity != null) {
+                    com.example.fess.kotlinmassage1.util.HeroTransition.launch(
+                        activity, image, transferRef, text, envJson = envJson, isOutgoing = true
+                    )
+                } else {
+                    // Контекст не активность (например, превью) — fallback на диалог.
+                    com.example.fess.kotlinmassage1.util.FullscreenImageDialog(
+                        image.context, transferRef, text, envJson = envJson, isOutgoing = true
+                    ).show()
+                }
+            }
         }
 
         // Галочки статуса (одна серая / две синие).
@@ -317,10 +330,21 @@ class KartinkaToItem(
             else -> com.squareup.picasso.Picasso.get().load(text).into(image)
         }
 
-        // Тап по миниатюре — полноэкранный просмотр с зумом (как в WhatsApp).
-        if (!deleted) image.setOnClickListener {
-            val c = ctx ?: image.context
-            com.example.fess.kotlinmassage1.util.FullscreenImageDialog(c, transferRef, text, envJson = envJson).show()
+        // Тап по миниатюре — полноэкранный просмотр с зумом и hero-переходом.
+        if (!deleted) {
+            com.example.fess.kotlinmassage1.util.HeroTransition.armHero(image, msgId.ifEmpty { transferRef })
+            image.setOnClickListener {
+                val activity = (ctx as? android.app.Activity) ?: (image.context as? android.app.Activity)
+                if (activity != null) {
+                    com.example.fess.kotlinmassage1.util.HeroTransition.launch(
+                        activity, image, transferRef, text, envJson = envJson
+                    )
+                } else {
+                    com.example.fess.kotlinmassage1.util.FullscreenImageDialog(
+                        image.context, transferRef, text, envJson = envJson
+                    ).show()
+                }
+            }
         }
 
         ImageLoader.loadAvatarInto(
