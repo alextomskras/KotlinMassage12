@@ -12,8 +12,6 @@
     <color name="send_button_background">#1B7A45</color>
     <!-- Пункт 13: жесты -->
     <color name="swipe_white">#FFFFFF</color>
-    <!-- Тёмная пилюля цитаты должна отличаться от тёмного же фона чата. -->
-    <color name="input_pill_background">#22272C</color>
     <color name="reply_accent">#4FA3E3</color>
     <color name="swipe_image_background">#546E7A</color>
     <color name="reply_quote_text">#9AA7B2</color>
