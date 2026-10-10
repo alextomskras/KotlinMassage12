@@ -30,6 +30,14 @@ class ChatSwipeCallback(
     ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
 ) {
 
+    /** RV запоминаем сами: protected-поля recyclerView у Callback нет (package-private). */
+    private var attachedRv: RecyclerView? = null
+
+    override fun attachToRecyclerView(recyclerView: RecyclerView?) {
+        super.attachToRecyclerView(recyclerView)
+        attachedRv = recyclerView
+    }
+
     private var replyBg: ColorDrawable? = null
     private var imageBg: ColorDrawable? = null
     private var iconSizePx = -1f
@@ -73,21 +81,31 @@ class ChatSwipeCallback(
     /** Подложка с иконкой под уезжающей строкой (без сторонних библиотек). */
     override fun onDraw(
         c: Canvas,
-        rv: RecyclerView,
-        vh: RecyclerView.ViewHolder,
+        viewHolder: RecyclerView.ViewHolder,
         dX: Float,
         dY: Float,
-        actionState: Int
+        actionState: Int,
+        isCurrentlyActive: Boolean
     ) {
-        super.onDraw(c, rv, vh, dX, dY, actionState)
+        // ВАЖНО: ItemTouchHelper.Callback.onDraw — package-private, super не вызываем.
         if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) return
+        val rv = attachedRv ?: return
         ensureMetrics(rv)
         val bg = when {
             dX > 0 -> replyDrawable(rv)
             dX < 0 -> imageDrawable(rv)
             else -> return
         } ?: return
-        val itemView = vh.itemView
+        drawOverlay(c, bg, viewHolder.itemView, dX, rv)
+    }
+
+    private fun drawOverlay(
+        c: Canvas,
+        bg: ColorDrawable,
+        itemView: android.view.View,
+        dX: Float,
+        rv: RecyclerView
+    ) {
         bg.setBounds(
             itemView.left, itemView.top,
             itemView.right, itemView.bottom

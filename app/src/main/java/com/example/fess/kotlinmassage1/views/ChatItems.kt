@@ -405,10 +405,9 @@ class DeletedTextItem(
     val time: String,
     val user: User,
     private val isIncoming: Boolean = false,
-    var dbId: String = ""
-) : ReplyQuoteRow() {
-
+    var dbId: String = "",
     override var replyPreview: String? = null
+) : ReplyQuoteRow() {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -425,12 +424,7 @@ class DeletedTextItem(
         renderQuote(viewHolder)
     }
 
-    override fun plainTextForMenu(): String? {
-        if (deleted) return null
-        return if (isIncoming) {
-            com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)?.take(500)
-        } else plainForEditing()?.take(500)
-    }
+    override fun plainTextForMenu(): String? = null // удалённое сообщение копировать нечего
 
     override fun rowDbId(): String = dbId
 }

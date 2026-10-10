@@ -714,20 +714,21 @@ class ChatLogActivity : AppCompatActivity() {
         return true
     }
 
+    /** Строка шторки действий (объявлена ВНЕ анонимного адаптера — иначе ViewHolder не виден базовому классу). */
+    class SheetRow(val tv: android.widget.TextView) :
+        androidx.recyclerview.widget.RecyclerView.ViewHolder(tv)
+
     /** BottomSheetDialog со списком действий (Material, без кастомных layout-файлов). */
     private fun showActionsSheet(labels: List<String>, actions: List<() -> Unit>) {
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         val list = androidx.recyclerview.widget.RecyclerView(this).apply {
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
             adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<
-                androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
-
-                inner class Row(val tv: android.widget.TextView) :
-                    androidx.recyclerview.widget.RecyclerView.ViewHolder(tv)
+                ChatLogActivity.SheetRow>() {
 
                 override fun getItemCount(): Int = labels.size
 
-                override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): Row {
+                override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): SheetRow {
                     val tv = android.widget.TextView(parent.context).apply {
                         layoutParams = android.widget.LinearLayout.LayoutParams(
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -739,10 +740,10 @@ class ChatLogActivity : AppCompatActivity() {
                         isClickable = true
                         isFocusable = true
                     }
-                    return Row(tv)
+                    return SheetRow(tv)
                 }
 
-                override fun onBindViewHolder(holder: Row, position: Int) {
+                override fun onBindViewHolder(holder: SheetRow, position: Int) {
                     holder.tv.text = labels[position]
                     holder.tv.setOnClickListener {
                         sheet.dismiss()
