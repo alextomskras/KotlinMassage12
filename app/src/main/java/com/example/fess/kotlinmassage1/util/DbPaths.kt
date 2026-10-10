@@ -35,6 +35,15 @@ object DbPaths {
     fun chatReadBy(chatId: String, readerUid: String) = "$CHAT_READ_STATUS/$chatId/$readerUid"
 
     /**
+     * Зеркало receipt'а читателя: /chat-read-status/{chatId}/{readerUid}/mirror.
+     * Пишет бэкенд-релей (admin), читает собеседник — правила разрешают узел
+     * mirror всем, кроме самого читателя. Так галки доходят до отправителя без
+     * чтения чужих узлов статуса.
+     */
+    fun chatReadMirror(chatId: String, readerUid: String) =
+        "${chatReadBy(chatId, readerUid)}/mirror"
+
+    /**
      * Relay-зона картинок: тело base64 живёт здесь РОВНО 7 дней (expiresAt),
      * получатели скачивают в локальный кэш и пишут ACK deliveredTo/<uid>.
      * Бэкенд-воркер чистит data по TTL или когда все скачали. В самих сообщениях

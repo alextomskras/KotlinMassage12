@@ -50,7 +50,13 @@
       "$chatId": {
         "$readerUid": {
           ".write": "auth != null && auth.uid === $readerUid",
-          ".read": "auth != null && auth.uid === $readerUid"
+          ".read": "auth != null && auth.uid === $readerUid",
+          // зеркало читателя, которое пишет бэкенд-релей (admin): слушает и
+          // красит галки СОБЕСЕДНИК-отправитель. Пишет только релей.
+          "mirror": {
+            ".read": "auth != null && auth.uid !== $readerUid",
+            ".write": false
+          }
         }
       }
     },

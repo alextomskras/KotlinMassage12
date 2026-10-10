@@ -403,7 +403,10 @@ class ChatLogActivity : AppCompatActivity() {
     private fun startChatStatusTracker(myUid: String, otherUid: String) {
         stopChatStatusTracker()
         val chatId = DbPaths.sortedChatId(myUid, otherUid)
-        val ref = FirebaseDatabase.getInstance().reference.child(DbPaths.chatReadBy(chatId, otherUid))
+        // Слушаем ЗЕРКАЛО receipt'а собеседника (пишет релей): свой собственный
+        // узел {otherUid} нам читать запрещено правилами — это и была причина,
+        // почему трекер отпадал с Permission denied и галки не красились.
+        val ref = FirebaseDatabase.getInstance().reference.child(DbPaths.chatReadMirror(chatId, otherUid))
         val listener = object : ValueEventListener {
             override fun onDataChange(p0: DataSnapshot) {
                 val ts = (p0.child("ts").getValue(Long::class.java) ?: 0L)
