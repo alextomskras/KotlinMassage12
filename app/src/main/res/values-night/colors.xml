@@ -3,6 +3,7 @@
     <!-- Тёмная тема: пузыри и текст в них. -->
     <color name="bubble_in">#2A2F35</color>
     <color name="bubble_in_text">#E9EDF1</color>
+    <color name="bubble_out">#2E5A3C</color>
     <color name="bubble_out_text">#FFFFFF</color>
     <color name="chat_background">#171B1F</color>
     <color name="md_surface">#171B1F</color>
