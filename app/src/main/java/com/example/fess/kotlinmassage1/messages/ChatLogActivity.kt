@@ -89,30 +89,12 @@ class ChatLogActivity : AppCompatActivity() {
 
         listenForMessages()
 
-        // Долгое нажатие на СВОЁ текстовое сообщение -> «Изменить / Удалить для всех».
-        // Подпись колбэка: (Int позиция, ChatRowDelegate) -> Boolean — см. ChatRecyclerAdapter.
-        adapter.onItemLongClickListener = { _: Int, item: com.example.fess.kotlinmassage1.views.ChatRowDelegate ->
-            val mine = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
-                (item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) ||
-                (item is com.example.fess.kotlinmassage1.views.KartinkaFromItem)
-            if (!mine) return@onItemLongClickListener false
-            // Для картинок — только удаление; для текста — правка + удаление.
-            when (item) {
-                is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
-                    confirmDeleteImage(item.dbId.ifEmpty { item.msgId })
-                else -> showMyMessageMenu(
-                    plain = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.plainForEditing()
-                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.plainForEditing(),
-                    editable = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
-                        item is com.example.fess.kotlinmassage1.views.TextItem,
-                    nodeKey = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.dbId
-                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.dbId ?: "",
-                    mirrorMsgId = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.msgId
-                        ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.msgId ?: ""
-                )
-            }
-            true
-        }
+        // Долгое нажатие на СВОЁ сообщение -> «Изменить / Удалить для всех».
+        // Колбэк объявлен в ChatRecyclerAdapter как СВОЙСТВО:
+        //   var onItemLongClickListener: ((Int, ChatRowDelegate) -> Boolean)? = null
+        // Обработка вынесена в отдельную функцию — в лямбде нельзя писать
+        // return@onItemLongClickListener (label = имя переменной, а не функции).
+        adapter.onItemLongClickListener = ::handleItemLongClick
 
         findViewById<Button>(R.id.send_button_chat_log).setOnClickListener {
             performSendMessage()
@@ -459,10 +441,32 @@ class ChatLogActivity : AppCompatActivity() {
     }
 
     /**
-     * Долгое нажатие на своё текстовое сообщение: «Изменить» / «Удалить».
-     * Удаление — soft: deleted=true во всех копиях (моё зеркало + зеркало
-     * собеседника + latest x2), физическую чистку делает backend cleanup.
+     * Долгое нажатие на строку чата (подписывается в onCreate как колбэк адаптера).
+     * Возвращает true, если обработали (показали меню), false — чужое сообщение.
      */
+    private fun handleItemLongClick(position: Int, item: com.example.fess.kotlinmassage1.views.ChatRowDelegate): Boolean {
+        val mine = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
+            (item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) ||
+            (item is com.example.fess.kotlinmassage1.views.KartinkaFromItem)
+        if (!mine) return false
+        // Для картинок — только удаление; для текста — правка + удаление.
+        when (item) {
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
+                confirmDeleteImage(item.dbId.ifEmpty { item.msgId })
+            else -> showMyMessageMenu(
+                plain = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.plainForEditing()
+                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.plainForEditing(),
+                editable = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
+                    item is com.example.fess.kotlinmassage1.views.TextItem,
+                nodeKey = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.dbId
+                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.dbId ?: "",
+                mirrorMsgId = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.msgId
+                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.msgId ?: ""
+            )
+        }
+        return true
+    }
+
     private fun showMyMessageMenu(plain: String?, editable: Boolean, nodeKey: String, mirrorMsgId: String) {
         val options = if (editable) arrayOf("✏️ Изменить", "🗑 Удалить для всех")
                       else arrayOf("🗑 Удалить для всех")
