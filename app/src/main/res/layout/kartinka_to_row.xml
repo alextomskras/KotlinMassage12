@@ -16,10 +16,13 @@
         android:layout_marginBottom="8dp"
         android:adjustViewBounds="true"
         android:scaleType="fitCenter"
+        android:clipToOutline="true"
+        android:outlineProvider="background"
+        android:elevation="1dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/imageview_chat_to_row2"
         app:layout_constraintTop_toTopOf="parent"
-        android:background="@drawable/image_placeholder" />
+        android:background="@drawable/bubble_image_card" />
 
     <TextView
         android:id="@+id/textView_to_message_time"

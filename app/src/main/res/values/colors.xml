@@ -7,4 +7,9 @@
     <color name="bubble_in">#FFFFFF</color>
     <color name="tick_read">#1E88FF</color>
     <color name="tick_sent">#9E9E9E</color>
+    <color name="bubble_in_text">#1C1B1F</color>
+    <color name="bubble_out_text">#103317</color>
+    <color name="chat_background">#F5F6F8</color>
+    <color name="md_surface">#FFFFFF</color>
+    <color name="md_on_surface">#1C1B1F</color>
 </resources>

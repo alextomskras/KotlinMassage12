@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Карточка картинки в чате: скруглённые углы + лёгкая тень за счёт elevation в layout. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/bubble_in" />
+    <corners android:radius="18dp" />
+</shape>
