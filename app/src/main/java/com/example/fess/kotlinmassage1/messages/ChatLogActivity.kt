@@ -26,6 +26,7 @@ import com.example.fess.kotlinmassage1.views.KartinkaFromItem
 import com.example.fess.kotlinmassage1.views.KartinkaToItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -183,20 +184,30 @@ class ChatLogActivity : AppCompatActivity() {
 
         val listener = object : ChildEventListener {
             override fun onChildAdded(p0: DataSnapshot, p1: String?) {
+                // Ключ запоминаем ДО защитных return: markIncomingAsRead обязан
+                // отметить прочтение даже «технических» узлов (например релей
+                // дописал delivered:true) — иначе у отправителя галочка так и
+                // осталась бы одной серой, хотя адресат сообщение получил.
+                snapshotKey = p0.key ?: ""
                 // Защита от «пустых» узлов: бэкенд-релей (пишет по admin-правам)
                 // мог оставить в зеркале чата ноду без данных сообщения
                 // (например {"delivered": true}) -> клиент рисовал пустое
-                // сообщение с датой 01.01.1970. Такие узлы игнорируем.
-                if (!p0.hasChild("text") && !p0.hasChild("fromId")) return
-                snapshotKey = p0.key ?: ""
+                // сообщение с датой 01.01.1970. Такие узлы не рисуем.
+                if (!p0.hasChild("text") && !p0.hasChild("fromId")) {
+                    markIncomingIfUnread(p0)
+                    return
+                }
                 val chatMessage = p0.getValue(ChatMessage::class.java) ?: return
-                if ((chatMessage.text.isNullOrEmpty() || chatMessage.text == "-1") && chatMessage.fromId.isEmpty()) return
+                if ((chatMessage.text.isNullOrEmpty() || chatMessage.text == "-1") && chatMessage.fromId.isEmpty()) {
+                    markIncomingIfUnread(p0)
+                    return
+                }
                 val isIncoming = chatMessage.fromId != FirebaseAuth.getInstance().uid
                 adapter.append(buildChatItem(chatMessage, isIncoming))
                 scrollToBottom()
                 // Read receipt: входящее и ещё не отмеченное -> ставим readAt
                 // В СВОЁМ зеркале (/user-messages/{me}/{partner}/{msgId});
-                // отправитель подтянет это своим read-listener'ом.
+                // отправитель подтянет это своим read-tracker'ом.
                 if (isIncoming && chatMessage.readAt <= 0) {
                     markIncomingAsRead(snapshotKey)
                 }
@@ -279,7 +290,7 @@ class ChatLogActivity : AppCompatActivity() {
             return
         }
         // fallback: ключ может совпадать с msgId (id в зеркале автора)
-        val byMsg = adapter.outgoingTextItems().firstOrNull { (_, d) -> d.msgId == key }
+        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> d.msgId == key }
         if (byMsg != null) {
             byMsg.second.readAt = readValue
             adapter.updateAt(byMsg.first)
@@ -492,6 +503,25 @@ class ChatLogActivity : AppCompatActivity() {
         val text = findViewById<EditText>(R.id.edittext_chat_log).text.toString()
         if (text.isEmpty()) return
         writeMessage(text, ChatMessage.TYPE_TEXT)
+    }
+
+    /**
+     * Отметка прочтения для снапшотов, не прошедших фильтр отрисовки: если
+     * узел принадлежит НЕ нам и readAt ещё нет — пишем receipt. Молча ловим
+     * Permission denied (у технических nod без fromId правила RTDB могут не
+     * пускать в запись) — это не должно ронять UI.
+     */
+    private fun markIncomingIfUnread(p0: DataSnapshot) {
+        val myUid = FirebaseAuth.getInstance().uid ?: return
+        val fromId = p0.child("fromId").getValue(String::class.java) ?: return
+        if (fromId == myUid) return
+        val hasRead = (p0.child("readAt").getValue(Long::class.java) ?: 0L) > 0
+        if (hasRead) return
+        try {
+            markIncomingAsRead(p0.key ?: return)
+        } catch (e: Exception) {
+            Log.w(TAG, "markIncomingIfUnread skipped: ${e.message}")
+        }
     }
 
     /**

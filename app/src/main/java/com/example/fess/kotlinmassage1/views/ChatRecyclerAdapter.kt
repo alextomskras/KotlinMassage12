@@ -49,7 +49,23 @@ class ChatRecyclerAdapter(
         return -1
     }
 
-    /** Все исходящие текстовые строки (для массовой отметки readAt из read-listener'а). */
+    /**
+     * Все исходящие строки, у которых бывает галочка статуса: legacy-текст
+     * (ChatFromItem), E2EE-текст (TextItem, только исходящий — входящий рисует
+     * чат без тика) и картинки от нас (KartinkaFromItem). Нужен read-tracker'у
+     * для массового/точечного проставления readAt.
+     */
+    fun outgoingReadRows(): List<Pair<Int, ReadTickRow>> =
+        items.mapIndexedNotNull { i, d ->
+            when {
+                d is ChatFromItem -> i to d
+                d is KartinkaFromItem -> i to d
+                d is TextItem && !d.isIncomingForMenu() -> i to d
+                else -> null
+            }
+        }
+
+    /** Все исходящие текстовые строки (оставлено для совместимости вызовов). */
     fun outgoingTextItems(): List<Pair<Int, ChatFromItem>> =
         items.mapIndexedNotNull { i, d -> if (d is ChatFromItem) i to d else null }
 
@@ -123,6 +139,13 @@ interface ChatRowDelegate {
 
     /** Контекст для локального кэша картинок (передаёт активити; null = без кэша). */
     var rowContext: android.content.Context?
+}
+
+/** Строка исходящего сообщения с галочкой статуса (readAt > 0 => две синие). */
+interface ReadTickRow {
+    var readAt: Long
+    /** id сообщения в зеркале автора — fallback-ключ для read-tracker'а. */
+    var msgId: String
 }
 
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */

@@ -22,9 +22,9 @@ class ChatFromItem(
     var editedText: String? = null,
     private val encMsgId: String? = null,
     /** id сообщения в зеркале MY uid — нужен для записи readAt собеседнику. */
-    var msgId: String = "",
+    override var msgId: String = "",
     /** Прочтено ли собеседником (readAt > 0) — рисует двойную синюю галочку. */
-    var readAt: Long = -1,
+    override var readAt: Long = -1,
     /** Время правки (>0 => показываем «изменено»). */
     var editTime: Long = -1,
     /** Selfless-конверт для чтения своего текста (E2EE). */
@@ -33,7 +33,7 @@ class ChatFromItem(
     var dbId: String = "",
     /** Soft-delete: рисуем заглушку вместо текста. */
     var deleted: Boolean = false
-) : ChatRowDelegate {
+) : ChatRowDelegate, ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -140,18 +140,18 @@ class TextItem(
     val text: String,
     val user: User,
     val time: String,
-    val msgId: String,
+    override var msgId: String,
     private val isIncoming: Boolean = false,
     private val envMirror: String? = null,
     /** Прочтено собеседником (для исходящих; readAt из БД). */
-    var readAt: Long = -1,
+    override var readAt: Long = -1,
     /** Время правки (>0 => «изменено»). */
     var editTime: Long = -1,
     /** Soft-delete: рисуем заглушку вместо контента. */
     var deleted: Boolean = false,
     /** id сообщения в ЗЕРКАЛЕ ПОЛЬЗОВАТЕЛЯ (отличается от msgId у зеркал собеседника). */
     var dbId: String = ""
-) : ChatRowDelegate {
+) : ChatRowDelegate, ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -228,16 +228,16 @@ class KartinkaFromItem(
     val text: String,
     val user: User,
     val time: String,
-    val msgId: String = "",
+    override var msgId: String = "",
     val transferRef: String? = null,
     val envJson: String? = null,
     /** Прочтено собеседником (для исходящих). */
-    var readAt: Long = -1,
+    override var readAt: Long = -1,
     /** Soft-delete: рисуем заглушку вместо картинки. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
     var dbId: String = ""
-) : ChatRowDelegate {
+) : ChatRowDelegate, ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
