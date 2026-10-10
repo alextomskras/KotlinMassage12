@@ -59,6 +59,14 @@ class ChatMessage(
      */
     val readAt: Long = -1,
     /**
+     * Delivery receipt: unix-время (сек), когда СЕРВЕРНЫЙ Релей доставил пуш
+     * получателю. Источник истины — /user-messages/{toId}/{fromId}/{nodeKey}/
+     * delivered (пишет backend outbox_relay при успешной отправке FCM).
+     * Отправитель подтягивает его read-tracker'ом и рисует одинарную СИНЮЮ
+     * галочку; readAt > 0 перекрывает её двойной синей («прочитано»).
+     */
+    val deliveredAt: Long = -1,
+    /**
      * E2EE-правка текста: после редактирования в [editedText] лежит НОВЫЙ
      * эфемерный конверт, а selfless-зеркало отправителя — здесь (старое [env]
      * относится к оригинальному тексту и для правки непригодно).
@@ -124,6 +132,13 @@ class ChatMessage(
                 editedText = if (editedTextRaw is String) editedTextRaw else null,
                 editTime = s.child("editTime").getValue(Long::class.java) ?: -1L,
                 readAt = s.child("readAt").getValue(Long::class.java) ?: -1L,
+                // delivered пишет релей: либо unix-секунды (Long), либо true
+                // (legacy-формат boolean). Оба варианта нормализуем в время.
+                deliveredAt = when (val dRaw = s.child("delivered").value) {
+                    is Number -> dRaw.toLong()
+                    is Boolean -> if (dRaw) System.currentTimeMillis() / 1000 else -1L
+                    else -> -1L
+                },
                 envEdited = if (envEditedRaw is String) envEditedRaw else null,
                 replyToId = s.child("replyToId").getValue(String::class.java),
                 replyPreview = s.child("replyPreview").getValue(String::class.java)

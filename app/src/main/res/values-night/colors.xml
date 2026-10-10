@@ -20,4 +20,7 @@
     <color name="list_primary_text">#E9EDF1</color>
     <color name="list_secondary_text">#C4CBD1</color>
     <color name="reply_quote_bg">#22272C</color>
+    <color name="tick_read">#1E88FF</color>
+    <color name="tick_sent">#7A828A</color>
+    <color name="tick_delivered">#5B8DEF</color>
 </resources>

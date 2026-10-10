@@ -131,8 +131,24 @@ class ChatRecyclerAdapter(
         } ?: return
         if (byMsg.second.readAt != readAtSec) {
             byMsg.second.readAt = readAtSec
+            // прочитано => доставлено априори (нельзя прочитать недоставленное)
+            if (byMsg.second.deliveredAt <= 0) byMsg.second.deliveredAt = readAtSec
             updateAt(byMsg.first)
         }
+    }
+
+    /** Статусная перекраска исходящей строки по ключу узла в зеркале получателя. */
+    fun applyStatusToRowByKey(key: String, readAtSec: Long, deliveredSec: Long) {
+        if (key.isEmpty()) return
+        val hit = outgoingReadRows().firstOrNull { (_, d) ->
+            val delegate = d as? ChatRowDelegate
+            delegate?.rowMsgId() == key || delegate?.rowDbId() == key
+        } ?: return
+        val row = hit.second
+        var changed = false
+        if (readAtSec > 0 && row.readAt != readAtSec) { row.readAt = readAtSec; changed = true }
+        if (deliveredSec > 0 && row.deliveredAt != deliveredSec) { row.deliveredAt = deliveredSec; changed = true }
+        if (changed) updateAt(hit.first)
     }
 
     fun submit(newItems: List<ChatRowDelegate>) {
@@ -222,6 +238,31 @@ abstract class ReplyQuoteRow : ChatRowDelegate {
 /** Строка исходящего сообщения с галочкой статуса (readAt > 0 => две синие). */
 interface ReadTickRow {
     var readAt: Long
+    /** delivered=true из зеркала получателя (пишет релей) => одна СИНЯЯ галочка. */
+    var deliveredAt: Long
+}
+
+/**
+ * Единая точка отрисовки галочки для всех типов исходящих строк.
+ * Приоритет статусов: прочитано (две синие) > доставлено (одна синяя, пишет
+ * серверный релей в зеркало получателя) > отправлено (одна серая).
+ */
+fun applyTickToView(viewHolder: RecyclerView.ViewHolder, tickId: Int, readAt: Long, deliveredAt: Long) {
+    val tick = viewHolder.itemView.findViewById<android.widget.ImageView>(tickId) ?: return
+    when {
+        readAt > 0 -> {
+            tick.setImageResource(R.drawable.ic_check_double)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
+        }
+        deliveredAt > 0 -> {
+            tick.setImageResource(R.drawable.ic_check_single)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_delivered))
+        }
+        else -> {
+            tick.setImageResource(R.drawable.ic_check_single)
+            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
+        }
+    }
 }
 
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */
@@ -235,7 +276,7 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
         // это единственный путь показа.
         KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, replyPreview = chatMessage.replyPreview)
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
-        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, readAt = chatMessage.readAt, replyPreview = chatMessage.replyPreview)
+        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, readAt = chatMessage.readAt, deliveredAt = chatMessage.deliveredAt, replyPreview = chatMessage.replyPreview)
     // E2EE: enc-сообщение читают СВОИМ приватником обе стороны диалога — и
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного
@@ -246,7 +287,7 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
     // после исключения узел приходит с дефолтным readAt=-1 даже если получатель уже
     // поставил receipt. Поэтому для enc-строк readAt всегда стартует с -1 — живую
     // галочку рисует read-tracker (applyReadFromMirror), который читает сырой лист.
-    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id, replyPreview = chatMessage.replyPreview)
+    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, deliveredAt = chatMessage.deliveredAt, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id, replyPreview = chatMessage.replyPreview)
     isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
-    else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
+    else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, deliveredAt = chatMessage.deliveredAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
 }

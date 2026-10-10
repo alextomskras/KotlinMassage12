@@ -297,6 +297,8 @@ class ChatLogActivity : AppCompatActivity() {
     /** Трекер readAt/readReceipt в зеркале собеседника (копии наших исходящих). */
     private var readTrackerRef: DatabaseReference? = null
     private var readTracker: ValueEventListener? = null
+    /** Когда трекер уже делал полный redraw (см. троттлинг в onDataChange). */
+    private var lastFullRedrawMs: Long? = null
 
     /**
      * Ручная десериализация — тонкая обёртка над ChatMessage.fromSnapshot().
@@ -341,7 +343,15 @@ class ChatLogActivity : AppCompatActivity() {
                 // основной ChildEventListener НЕ выдаёт onChildChanged на
                 // уже загруженные узлы, и без этого шага галочка осталась бы
                 // серой до первого изменения узла.
-                adapter.notifyDataSetChanged()
+                // Принудительная перерисовка нужна только при ПЕРВОМ проходе
+                // (receipt проставлен, пока клиента в чате не было). При
+                // каждом последующем событии это стоило бы полной пересборки
+                // списка раз в минуту из-за delivered-флагов релея, поэтому
+                // ограничиваем частоту: один полный redraw за сессию трекинга.
+                if (lastFullRedrawMs == null) {
+                    lastFullRedrawMs = System.currentTimeMillis()
+                    adapter.notifyDataSetChanged()
+                }
             }
             override fun onCancelled(p0: DatabaseError) {
                 Log.w(TAG, "readTracker cancelled: ${p0.message}")
@@ -366,33 +376,48 @@ class ChatLogActivity : AppCompatActivity() {
     private fun applyReadFromMirror(c: DataSnapshot) {
         val key = c.key ?: return
         val readValue = (c.child("readAt").getValue(Long::class.java)
-            ?: c.child("readReceipt").getValue(Long::class.java)) ?: return
-        if (readValue <= 0) return
+            ?: c.child("readReceipt").getValue(Long::class.java)) ?: 0L
+        // Delivery receipt пишет СЕРВЕРНЫЙ релей в зеркало получателя:
+        // delivered = unix-секунды либо true (legacy-формат boolean).
+        // Это единственный честный источник «галочки доставки» — клиент сам
+        // её никогда не ставит. Раньше статус доставки вообще не использовался,
+        // и галка висела серой до прочтения; теперь: отправлено(серая) ->
+        // доставлено(синяя, от релея) -> прочитано(две синие, readAt).
+        val deliveredValue = when (val dRaw = c.child("delivered").value) {
+            is Number -> dRaw.toLong()
+            is Boolean -> if (dRaw) System.currentTimeMillis() / 1000 else 0L
+            else -> 0L
+        }
+        if (readValue <= 0 && deliveredValue <= 0) return
         // Основной путь: трекер слушает ЧУЖОЕ зеркало; ключ узла там —
         // mirrorKey, но поле id внутри узла всегда авторский msgId, которым мы
         // заполняем msgId живой строки при отправке. Ищем исходящую строку по
         // msgId (покрывает и dbId: у своих сообщений dbId == msgId).
-        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> (d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate)?.rowMsgId() == key }
-        if (byMsg != null) {
-            if (byMsg.second.readAt != readValue) {
-                byMsg.second.readAt = readValue
-                adapter.updateAt(byMsg.first)
-            }
-            return
-        }
+        // Единая перекраска по msgId ИЛИ dbId (applyStatusToRowByKey сам
+        // проверяет оба ключа): readAt > 0 красит две синие, delivered > 0 —
+        // одну синюю. Если ни одна живая строка не найдена — ниже fallback.
+        adapter.applyStatusToRowByKey(key, readValue, deliveredValue)
+        if (adapter.outgoingReadRows().any { (_, d) ->
+                val delegate = d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate
+                delegate?.rowMsgId() == key || delegate?.rowDbId() == key
+            }) return
         // Fallback: поиск по dbId (для строк, чей msgId отличается от ключа —
         // например после ретара записи релеем).
         val pos = adapter.findRowPosition(key)
         if (pos >= 0) {
-            when (val item = adapter.itemAt(pos)) {
-                is com.example.fess.kotlinmassage1.views.ChatFromItem ->
-                    if (item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
-                is com.example.fess.kotlinmassage1.views.TextItem ->
-                    if (!item.isIncomingForMenu() && item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
-                is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
-                    if (item.readAt != readValue) { item.readAt = readValue; adapter.updateAt(pos) }
-                else -> {}
+            fun paint(row: com.example.fess.kotlinmassage1.views.ReadTickRow): Boolean {
+                var changed = false
+                if (readValue > 0 && row.readAt != readValue) { row.readAt = readValue; changed = true }
+                if (deliveredValue > 0 && row.deliveredAt <= 0) { row.deliveredAt = deliveredValue; changed = true }
+                return changed
             }
+            val changed = when (val item = adapter.itemAt(pos)) {
+                is com.example.fess.kotlinmassage1.views.ChatFromItem -> paint(item)
+                is com.example.fess.kotlinmassage1.views.TextItem -> if (!item.isIncomingForMenu()) paint(item) else false
+                is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> paint(item)
+                else -> false
+            }
+            if (changed) adapter.updateAt(pos)
             return
         }
         // Совпадения нет ни по msgId, ни по dbId. Возможные случаи:
@@ -416,6 +441,7 @@ class ChatLogActivity : AppCompatActivity() {
         when (val item = adapter.itemAt(pos)) {
             is com.example.fess.kotlinmassage1.views.ChatFromItem -> {
                 if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                if (chatMessage.deliveredAt > 0) item.deliveredAt = chatMessage.deliveredAt
                 item.editTime = chatMessage.editTime
                 item.editedText = chatMessage.editedText
                 item.envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env
@@ -423,6 +449,7 @@ class ChatLogActivity : AppCompatActivity() {
             }
             is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> {
                 if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                if (chatMessage.deliveredAt > 0) item.deliveredAt = chatMessage.deliveredAt
                 item.deleted = chatMessage.deleted
             }
             is com.example.fess.kotlinmassage1.views.KartinkaToItem -> {
@@ -433,6 +460,7 @@ class ChatLogActivity : AppCompatActivity() {
             }
             is com.example.fess.kotlinmassage1.views.TextItem -> {
                 if (chatMessage.readAt > 0) item.readAt = chatMessage.readAt
+                if (chatMessage.deliveredAt > 0) item.deliveredAt = chatMessage.deliveredAt
                 item.editTime = chatMessage.editTime
                 item.deleted = chatMessage.deleted
             }
@@ -580,7 +608,15 @@ class ChatLogActivity : AppCompatActivity() {
         // Копия собеседника: readAt=0 — сигнал «не прочитано, отметь при просмотре».
         // Поле присутствует явно (в отличие от legacy-записей без readAt), поэтому
         // получатель гарантированно вызовет markIncomingAsRead при открытии чата.
-        val partnerCopy = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply { put("readAt", 0L) }
+        // delivered=false — маркер «ждёт доставки». Когда релей (backend
+        // outbox_relay) успешно отправит FCM получателю, он переписывает это
+        // поле в true/unix-время. Отправитель ловит изменение read-tracker'ом
+        // и красит одинарную СИНИЮ галочку («доставлено»). Без явного false
+        // поле у новых сообщений отсутствовало бы, и трекер не различал бы
+        // «не доставлено» от legacy-узлов.
+        val partnerCopy = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply {
+            put("readAt", 0L); put("delivered", false)
+        }
         // Источник цитаты регистрируем ПО dbId ЗЕРКАЛА ПОЛУЧАТЕЛЯ (mirrorKey):
         // когда он прочтёт историю, applyReply найдёт превью по своему ключу узла.
         reply?.let { adapter.registerReplySource(mirrorKey, it.second, it.third) }

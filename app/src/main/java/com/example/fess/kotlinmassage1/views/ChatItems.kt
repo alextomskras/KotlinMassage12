@@ -25,6 +25,8 @@ class ChatFromItem(
     var msgId: String = "",
     /** Прочтено ли собеседником (readAt > 0) — рисует двойную синюю галочку. */
     override var readAt: Long = -1,
+    /** Доставлено получателю (delivered из зеркала, пишет релей) — одна синяя. */
+    override var deliveredAt: Long = -1,
     /** Время правки (>0 => показываем «изменено»). */
     var editTime: Long = -1,
     /** Selfless-конверт для чтения своего текста (E2EE). */
@@ -80,16 +82,8 @@ class ChatFromItem(
      * см. ChatLogActivity.markIncomingAsRead / readTracker).
      */
     fun applyTick(viewHolder: RecyclerView.ViewHolder) {
-        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status) ?: return
-        if (readAt > 0) {
-            tick.setImageResource(R.drawable.ic_check_double)
-            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(
-                tick.context, R.color.tick_read))
-        } else {
-            tick.setImageResource(R.drawable.ic_check_single)
-            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(
-                tick.context, R.color.tick_sent))
-        }
+        com.example.fess.kotlinmassage1.views.applyTickToView(
+            viewHolder, R.id.imageview_msg_status, readAt, deliveredAt)
     }
 }
 
@@ -165,6 +159,8 @@ class TextItem(
     private val envMirror: String? = null,
     /** Прочтено собеседником (для исходящих; readAt из БД). */
     override var readAt: Long = -1,
+    /** Доставлено (delivered из зеркала получателя, пишет релей) — одна синяя. */
+    override var deliveredAt: Long = -1,
     /** Время правки (>0 => «изменено»). */
     var editTime: Long = -1,
     /** Soft-delete: рисуем заглушку вместо контента. */
@@ -229,14 +225,8 @@ class TextItem(
      * вернёт null, вызов безопасен с любой ветки.
      */
     private fun applyTick(viewHolder: RecyclerView.ViewHolder) {
-        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status) ?: return
-        if (readAt > 0) {
-            tick.setImageResource(R.drawable.ic_check_double)
-            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
-        } else {
-            tick.setImageResource(R.drawable.ic_check_single)
-            tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
-        }
+        com.example.fess.kotlinmassage1.views.applyTickToView(
+            viewHolder, R.id.imageview_msg_status, readAt, deliveredAt)
     }
 
     /** true если строка — входящее сообщение (для long-press фильтра «только свои»). */
@@ -267,6 +257,8 @@ class KartinkaFromItem(
     val envJson: String? = null,
     /** Прочтено собеседником (для исходящих). */
     override var readAt: Long = -1,
+    /** Доставлено (delivered из зеркала получателя, пишет релей) — одна синяя. */
+    override var deliveredAt: Long = -1,
     /** Soft-delete: рисуем заглушку вместо картинки. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
@@ -314,17 +306,9 @@ class KartinkaFromItem(
             }
         }
 
-        // Галочки статуса (одна серая / две синие).
-        val tick = viewHolder.itemView.findViewById<ImageView>(R.id.imageview_msg_status_img)
-        if (tick != null) {
-            if (readAt > 0) {
-                tick.setImageResource(R.drawable.ic_check_double)
-                tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_read))
-            } else {
-                tick.setImageResource(R.drawable.ic_check_single)
-                tick.setColorFilter(androidx.core.content.ContextCompat.getColor(tick.context, R.color.tick_sent))
-            }
-        }
+        // Галочки статуса (одна серая / одна синяя-доставлено / две синие).
+        com.example.fess.kotlinmassage1.views.applyTickToView(
+            viewHolder, R.id.imageview_msg_status_img, readAt, deliveredAt)
 
         ImageLoader.loadAvatarInto(
             user.profileImageUrl,
