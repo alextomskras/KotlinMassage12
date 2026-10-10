@@ -1,20 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+    <!-- Base application theme: Material 3 (через Material Components, т.к. активности на AppCompatActivity). -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
         <!-- Customize your theme here. -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <!-- Material 3 токены (использует DynamicColors / компоненты M3) -->
+        <item name="colorSurface">@color/md_surface</item>
+        <item name="colorOnSurface">@color/md_on_surface</item>
     </style>
 
-    <!-- Полноэкранный просмотр картинки чата (FullscreenImageDialog): без заголовка, поверх всего. -->
-    <style name="Theme.FullscreenImage" parent="Theme.AppCompat.DialogWhenLarge">
+    <!-- Полноэкранный просмотр картинки чата (FullscreenImageActivity):
+         прозрачное окно нужно для hero-перехода (SharedElementTransition) —
+         старая миниатюра видна сквозь окно, пока летит новая. -->
+    <style name="Theme.FullscreenImage" parent="Theme.MaterialComponents.DayNight.NoActionBar.Bridge">
         <item name="windowNoTitle">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowIsFloating">false</item>
         <item name="android:backgroundDimEnabled">false</item>
-        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 
 </resources>
