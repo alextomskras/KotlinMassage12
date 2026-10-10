@@ -624,13 +624,6 @@ class ChatLogActivity : AppCompatActivity() {
 
         val updates = HashMap<String, Any>()
 
-        // СВОЙ узел (зеркало автора) всегда содержит delivered=false — иначе у
-        // старых сообщений поле отсутствовало бы вовсе, и трекер не смог бы
-        // отличить «не доставлено» от legacy. readAt=-1 — маркер «не реворкать».
-        val ownNode = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply {
-            put("readAt", -1L); put("delivered", false)
-        }
-
         // --- Новый relay-формат для картинок: тело живёт ОДИН раз в /transfers/<id>
         // (7 дней), в сообщениях только transferRef + превью. Это убирает дубли
         // base64 (раньше одна картинка лежала 4 раза: два зеркала чата + latest x2).
@@ -670,6 +663,12 @@ class ChatLogActivity : AppCompatActivity() {
         // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
         val outboxKey = chatMessage.id
 
+        // СВОЙ узел (зеркало автора) всегда содержит delivered=false — иначе у
+        // старых сообщений поле отсутствовало бы вовсе, и трекер не смог бы
+        // отличить «не доставлено» от legacy. readAt=-1 — маркер «не реворкать».
+        val ownNode = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply {
+            put("readAt", -1L); put("delivered", false)
+        }
         updates["/${DbPaths.conversation(fromId, toId)}/${messageRef.key}"] = ownNode
         // Копия собеседника: readAt=0 — сигнал «не прочитано, отметь при просмотре».
         // Поле присутствует явно (в отличие от legacy-записей без readAt), поэтому
