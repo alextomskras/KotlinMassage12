@@ -76,6 +76,15 @@ class ChatRecyclerAdapter(
     /** Строка по позиции (для long-press меню). */
     fun itemAt(position: Int): ChatRowDelegate? = items.getOrNull(position)
 
+    /**
+     * Ключ узла копии в ЗЕРКАЛЕ ПОЛУЧАТЕЛЯ для нашего исходящего сообщения.
+     * Пишется в outbox при отправке; read/delivery-трекер ищёт строку именно
+     * по нему, т.к. delivered/readAt живут в чужом зеркале под mirrorKey, а не
+     * под нашим msgId. Пустая строка — у сообщений, отправленных старыми
+     * версиями клиента (там fallback-поиск по msgId/dbId).
+     */
+    var mirrorKeyProvider: ((msgId: String) -> String?)? = null
+
     // ===== Пункт 13: swipe reply =====
     /** dbId строки -> (msgId источника для цитаты, превью текста <=90 симв.). */
     private val replyMap = HashMap<String, Pair<String, String>>()
@@ -125,10 +134,7 @@ class ChatRecyclerAdapter(
      */
     fun applyReadToRowByKey(key: String, readAtSec: Long) {
         if (key.isEmpty() || readAtSec <= 0) return
-        val byMsg = outgoingReadRows().firstOrNull { (_, d) ->
-            val delegate = d as? ChatRowDelegate
-            delegate?.rowMsgId() == key || delegate?.rowDbId() == key
-        } ?: return
+        val byMsg = outgoingReadRows().firstOrNull { (_, d) -> matchesStatusKey(d, key) } ?: return
         if (byMsg.second.readAt != readAtSec) {
             byMsg.second.readAt = readAtSec
             // прочитано => доставлено априори (нельзя прочитать недоставленное)
@@ -137,18 +143,36 @@ class ChatRecyclerAdapter(
         }
     }
 
-    /** Статусная перекраска исходящей строки по ключу узла в зеркале получателя. */
-    fun applyStatusToRowByKey(key: String, readAtSec: Long, deliveredSec: Long) {
-        if (key.isEmpty()) return
-        val hit = outgoingReadRows().firstOrNull { (_, d) ->
-            val delegate = d as? ChatRowDelegate
-            delegate?.rowMsgId() == key || delegate?.rowDbId() == key
-        } ?: return
+    /**
+     * Совпадает ли ключ узла (msgId / dbId в нашем зеркале / mirrorKey копии в
+     * зеркале получателя) с исходящей строкой. Именно по mirrorKey релей пишет
+     * delivered, а получатель — readAt, поэтому без этой ветки галочка никогда
+     * бы не находила свою строку (ключи msgId != mirrorKey).
+     */
+    private fun matchesStatusKey(d: ReadTickRow, key: String): Boolean {
+        if (key.isEmpty()) return false
+        val delegate = d as? ChatRowDelegate ?: return false
+        if (delegate.rowMsgId() == key || delegate.rowDbId() == key) return true
+        val mk = delegate.rowMsgId().let { m ->
+            if (m.isEmpty()) null else mirrorKeyProvider?.invoke(m)
+        }
+        return !mk.isNullOrEmpty() && mk == key
+    }
+
+    /**
+     * Статусная перекраска исходящей строки по ключу узла в зеркале получателя.
+     * @return true, если живая строка найдена (перекрашена или уже в нужном
+     * статусе) — вызывающий не должен ничего дописывать в БД.
+     */
+    fun applyStatusToRowByKey(key: String, readAtSec: Long, deliveredSec: Long): Boolean {
+        if (key.isEmpty()) return false
+        val hit = outgoingReadRows().firstOrNull { (_, d) -> matchesStatusKey(d, key) } ?: return false
         val row = hit.second
         var changed = false
         if (readAtSec > 0 && row.readAt != readAtSec) { row.readAt = readAtSec; changed = true }
         if (deliveredSec > 0 && row.deliveredAt != deliveredSec) { row.deliveredAt = deliveredSec; changed = true }
         if (changed) updateAt(hit.first)
+        return true
     }
 
     fun submit(newItems: List<ChatRowDelegate>) {

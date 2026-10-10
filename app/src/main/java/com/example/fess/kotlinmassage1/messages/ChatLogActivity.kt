@@ -64,6 +64,12 @@ class ChatLogActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.recyclerview_chat_log).adapter = this.adapter
         // строкам нужен контекст для локального кэша картинок (ImageCache)
         adapter.rowContextProvider = { this }
+        // Галочки статуса: delivered/readAt пишутся в копию сообщения в ЗЕРКАЛЕ
+        // ПОЛУЧАТЕЛЯ под mirrorKey (push-ключ, отличный от нашего msgId). Трекер
+        // получает ключ узла чужого зеркала и должен сопоставить его с живой
+        // строкой — берём mapping из outbox-ноды (пишется при отправке там же:
+        // "mirrorKey" to mirrorKey). Без этого галочка оставалась серой всегда.
+        adapter.mirrorKeyProvider = { msgId -> readOutboxMirrorKey(msgId) }
 
         // ЭКРАНАЦИЯ PUSH-ТАПА: раньше ChatLog открывался с произвольным fromId из
         // Intent без проверки сессии. Теперь без авторизации экран не работает.
@@ -206,6 +212,70 @@ class ChatLogActivity : AppCompatActivity() {
     /** Ключ последнего обработанного снапшота (id сообщения в нашем зеркале). */
     private var snapshotKey: String = ""
 
+    // ===== mapping msgId -> mirrorKey (для галочек статуса) =====
+    /**
+     * Копия нашего исходящего сообщения лежит в зеркале получателя под СВОИМ
+     * push-ключом (mirrorKey), и именно туда релей пишет delivered, а
+     * получатель — readAt. Чтобы трекер находил живую строку по ключу чужого
+     * узла, сохраняем пару (msgId -> mirrorKey): локально в SharedPreferences
+     * (переживает перезапуск) и продублировано в outbox-ноде (см. writeMessageToDb,
+     * читается при восстановлении истории).
+     */
+    private val mirrorKeys = HashMap<String, String>()
+
+    private fun prefsMirrorKeyMap(): Map<String, String> {
+        if (mirrorKeys.isEmpty()) {
+            val raw = getSharedPreferences("chat_status", MODE_PRIVATE)
+                .getString("mirror_keys_" + (FirebaseAuth.getInstance().uid ?: ""), "") ?: ""
+            raw.split("\n").forEach { pair ->
+                val kv = pair.split("=", limit = 2)
+                if (kv.size == 2 && kv[0].isNotEmpty()) mirrorKeys[kv[0]] = kv[1]
+            }
+        }
+        return mirrorKeys
+    }
+
+    private fun rememberMirrorKey(msgId: String, mirrorKey: String) {
+        if (msgId.isEmpty() || mirrorKey.isEmpty()) return
+        prefsMirrorKeyMap()
+        mirrorKeys[msgId] = mirrorKey
+        val uid = FirebaseAuth.getInstance().uid ?: return
+        // Храним последние 500 пар, чтобы prefs не разрастались.
+        val entries = mirrorKeys.entries.toList()
+        val trimmed = if (entries.size > 500) entries.takeLast(500) else entries
+        mirrorKeys.clear(); mirrorKeys.putAll(trimmed)
+        getSharedPreferences("chat_status", MODE_PRIVATE).edit()
+            .putString("mirror_keys_$uid", trimmed.joinToString("\n") { "${it.key}=${it.value}" })
+            .apply()
+    }
+
+    /** msgId -> mirrorKey копии в зеркале получателя (или null, если не знаем). */
+    private fun readOutboxMirrorKey(msgId: String): String? {
+        if (msgId.isEmpty()) return null
+        prefsMirrorKeyMap()[msgId]?.let { return it }
+        // Fallback: читаем outbox-ноду (там "mirrorKey" с момента отправки).
+        // Асинхронно кладём в кэш — следующий запрос будет мгновенным.
+        FirebaseDatabase.getInstance().reference
+            .child(DbPaths.OUTBOX).child(msgId).child("mirrorKey")
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) {
+                    val mk = s.getValue(String::class.java)
+                    if (!mk.isNullOrEmpty()) rememberMirrorKey(msgId, mk)
+                }
+                override fun onCancelled(e: DatabaseError) {}
+            })
+        return null
+    }
+
+    /** Восстановление mapping из снапшотов /outbox при старте трекинга. */
+    private fun primeMirrorKeysFromOutbox(snap: DataSnapshot) {
+        for (c in snap.children) {
+            val msgId = c.child("msgId").getValue(String::class.java) ?: c.key ?: continue
+            val mk = c.child("mirrorKey").getValue(String::class.java)
+            if (!mk.isNullOrEmpty()) rememberMirrorKey(msgId, mk)
+        }
+    }
+
     private fun listenForMessages() {
         val fromId = FirebaseAuth.getInstance().uid ?: return
         val toId = toUser?.uid ?: return
@@ -289,6 +359,14 @@ class ChatLogActivity : AppCompatActivity() {
         // свою копию именно там. Слушать своё зеркало бессмысленно — receipt
         // там не появляется, и галочка навсегда оставалась одной серой.
         val myUidForTracker = FirebaseAuth.getInstance().uid ?: return
+        // Перед стартом трекинга греем mapping msgId -> mirrorKey из /outbox:
+        // delivered/readAt в зеркале получателя приходят под mirrorKey, и без
+        // отображения трекер не находит живую строку — галочка висит серой.
+        FirebaseDatabase.getInstance().reference.child(DbPaths.OUTBOX)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(s: DataSnapshot) { primeMirrorKeysFromOutbox(s) }
+                override fun onCancelled(e: DatabaseError) {}
+            })
         // ВАЖНО: аргументы в обратном порядке — (партнёр, я), чтобы трекер
         // слушал user-messages/{partner}/{me} (копии наших исходящих с readAt).
         startReadTracker(toId, myUidForTracker)
@@ -389,37 +467,15 @@ class ChatLogActivity : AppCompatActivity() {
             else -> 0L
         }
         if (readValue <= 0 && deliveredValue <= 0) return
-        // Основной путь: трекер слушает ЧУЖОЕ зеркало; ключ узла там —
-        // mirrorKey, но поле id внутри узла всегда авторский msgId, которым мы
-        // заполняем msgId живой строки при отправке. Ищем исходящую строку по
-        // msgId (покрывает и dbId: у своих сообщений dbId == msgId).
-        // Единая перекраска по msgId ИЛИ dbId (applyStatusToRowByKey сам
-        // проверяет оба ключа): readAt > 0 красит две синие, delivered > 0 —
-        // одну синюю. Если ни одна живая строка не найдена — ниже fallback.
+        // Трекер слушает ЧУЖОЕ зеркало: delivered/readAt приходят в копию
+        // сообщения под mirrorKey (push-ключ, НЕ наш msgId). Единая перекраска
+        // applyStatusToRowByKey сопоставляет ключ по msgId / dbId / mirrorKey
+        // (mapping из prefs+outbox): readAt > 0 красит две синие,
+        // delivered > 0 — одну синюю. Если живая строка не найдена — событие
+        // просто игнорируется: раньше отсюда уходил поток receipt-записей в
+        // чужие узлы, правила RTDB их отклоняли (Permission denied), и
+        // Firebase снимал ВСЕ слушатели — галочки навсегда оставались серыми.
         adapter.applyStatusToRowByKey(key, readValue, deliveredValue)
-        if (adapter.outgoingReadRows().any { (_, d) ->
-                val delegate = d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate
-                delegate?.rowMsgId() == key || delegate?.rowDbId() == key
-            }) return
-        // Fallback: поиск по dbId (для строк, чей msgId отличается от ключа —
-        // например после ретара записи релеем).
-        val pos = adapter.findRowPosition(key)
-        if (pos >= 0) {
-            fun paint(row: com.example.fess.kotlinmassage1.views.ReadTickRow): Boolean {
-                var changed = false
-                if (readValue > 0 && row.readAt != readValue) { row.readAt = readValue; changed = true }
-                if (deliveredValue > 0 && row.deliveredAt <= 0) { row.deliveredAt = deliveredValue; changed = true }
-                return changed
-            }
-            val changed = when (val item = adapter.itemAt(pos)) {
-                is com.example.fess.kotlinmassage1.views.ChatFromItem -> paint(item)
-                is com.example.fess.kotlinmassage1.views.TextItem -> if (!item.isIncomingForMenu()) paint(item) else false
-                is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> paint(item)
-                else -> false
-            }
-            if (changed) adapter.updateAt(pos)
-            return
-        }
         // Совпадения нет ни по msgId, ни по dbId. Возможные случаи:
         //  a) узел принадлежит МНЕ (fromId == myUid), но строки с ним в списке
         //     нет — чат ещё достраивается. НИЧЕГО не пишем: раньше отсюда
@@ -620,6 +676,8 @@ class ChatLogActivity : AppCompatActivity() {
         // Источник цитаты регистрируем ПО dbId ЗЕРКАЛА ПОЛУЧАТЕЛЯ (mirrorKey):
         // когда он прочтёт историю, applyReply найдёт превью по своему ключу узла.
         reply?.let { adapter.registerReplySource(mirrorKey, it.second, it.third) }
+        // Запоминаем пару msgId -> mirrorKey для галочек статуса (см. prefsMirrorKeyMap).
+        rememberMirrorKey(chatMessage.id, mirrorKey)
         updates["/${DbPaths.conversation(toId, fromId)}/$mirrorKey"] = partnerCopy
         // В latest-зеркало цитату НЕ пишем: replyPreview нужен только внутри
         // полного списка чата, а в списке диалогов его никто не рисует (экономия).
@@ -638,6 +696,10 @@ class ChatLogActivity : AppCompatActivity() {
             "msgType" to if (msgType == ChatMessage.TYPE_IMAGE) "IMAGE" else "TEXT",
             "preview" to preview,
             "timestamp" to nowSec,
+            // Ключ копии в зеркале получателя: по нему релей/получатель пишут
+            // delivered/readAt, а read-tracker сопоставляет событие с живой
+            // строкой (adapter.mirrorKeyProvider читает это поле).
+            "mirrorKey" to mirrorKey,
             "sent" to false
         )
 
