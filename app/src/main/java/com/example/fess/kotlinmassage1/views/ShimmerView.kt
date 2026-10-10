@@ -11,6 +11,7 @@ import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.animation.LinearInterpolator
 import androidx.constraintlayout.widget.ConstraintLayout
+import com.example.fess.kotlinmassage1.R
 
 /**
  * Шиммер-контейнер для скелетонов списка диалогов (пункт 12: индикатор загрузки).
@@ -30,11 +31,11 @@ import androidx.constraintlayout.widget.ConstraintLayout
  *
  * Атрибуты xml (shimmer_base_color, shimmer_highlight_color,
  * shimmer_band_width_fraction, shimmer_duration_ms, shimmer_auto_alpha) —
- * см. res/values/attrs.xml; читаются через obtainStyledAttributes(intArrayOf(id)).
+ * см. res/values/attrs.xml; читаются через obtainStyledAttributes(attrs, R.styleable...).
  */
 class ShimmerConstraintLayout @JvmOverloads constructor(
     context: Context,
-    attrs: AttributeSet? = null,
+    private val attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : ConstraintLayout(context, attrs, defStyleAttr) {
 
@@ -63,25 +64,22 @@ class ShimmerConstraintLayout @JvmOverloads constructor(
         }
 
     init {
-        baseColor = readAttr("shimmer_base_color", DEFAULT_BASE) { it.getColor(0, DEFAULT_BASE) }
-        highlightColor = readAttr("shimmer_highlight_color", DEFAULT_HIGHLIGHT) { it.getColor(0, DEFAULT_HIGHLIGHT) }
-        bandWidthFraction = readAttr("shimmer_band_width_fraction", 0.35f) { it.getFloat(0, 0.35f) }
-        durationMs = readAttr("shimmer_duration_ms", 1400) { it.getInt(0, 1400) }.toLong()
-        val autoAlpha = readAttr("shimmer_auto_alpha", true) { it.getBoolean(0, true) }
-        alphaPeriodMs = if (autoAlpha) (durationMs / 2).coerceAtLeast(200L) else 0L
-    }
-
-    /**
-     * Чтение одного атрибута из declare-styleable по имени. Атрибуты запрашиваем
-     * поштучно (intArrayOf(id)), чтобы не зависеть от порядка объявления в attrs.xml.
-     */
-    private inline fun <T> readAttr(name: String, default: T, extract: (android.content.res.TypedArray) -> T): T {
-        val id = resources.getIdentifier(name, "attr", context.packageName)
-        // Атрибут не объявлен в styleable или view создан кодом без attrs — берём дефолт.
-        if (id == 0 || attrs == null) return default
-        val ta = context.obtainStyledAttributes(attrs, intArrayOf(id))
+        // Один проход по TypedArray с готовым R.styleable — без reflection-подобных
+        // getIdentifier() и без зависимости от порядка атрибутов (индексы в массиве
+        // R.styleable.ShimmerConstraintLayout генерирует aapt).
+        val ta = context.obtainStyledAttributes(attrs, R.styleable.ShimmerConstraintLayout)
         try {
-            return extract(ta)
+            baseColor = ta.getColor(
+                R.styleable.ShimmerConstraintLayout_shimmer_base_color, DEFAULT_BASE)
+            highlightColor = ta.getColor(
+                R.styleable.ShimmerConstraintLayout_shimmer_highlight_color, DEFAULT_HIGHLIGHT)
+            bandWidthFraction = ta.getFloat(
+                R.styleable.ShimmerConstraintLayout_shimmer_band_width_fraction, 0.35f)
+            durationMs = ta.getInt(
+                R.styleable.ShimmerConstraintLayout_shimmer_duration_ms, 1400).toLong()
+            val autoAlpha = ta.getBoolean(
+                R.styleable.ShimmerConstraintLayout_shimmer_auto_alpha, true)
+            alphaPeriodMs = if (autoAlpha) (durationMs / 2).coerceAtLeast(200L) else 0L
         } finally {
             ta.recycle()
         }
