@@ -6,6 +6,28 @@
     android:layout_height="wrap_content"
     android:layout_marginBottom="12dp">
 
+    <!-- Пункт 13: плашка «Ответ на: ...» (swipe reply), скрыта без цитаты -->
+    <TextView
+        android:id="@+id/textview_reply_quote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/reply_quote_background"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:textColor="@color/reply_quote_text"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@+id/kartinka_chat_to_row2"
+        app:layout_constraintStart_toStartOf="@+id/kartinka_chat_to_row2"
+        app:layout_constraintTop_toBottomOf="@+id/imageview_chat_to_row2"
+        tools:text="Ответ на: привет, как дела"
+        tools:visibility="visible" />
+
     <ImageView
         android:id="@+id/kartinka_chat_to_row2"
         android:layout_width="150dp"
@@ -21,7 +43,7 @@
         android:elevation="1dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/imageview_chat_to_row2"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textview_reply_quote"
         android:background="@drawable/bubble_image_card" />
 
     <TextView

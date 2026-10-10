@@ -15,4 +15,9 @@
     <color name="input_pill_background">#FFFFFF</color>
     <color name="input_pill_stroke">#E3E5EA</color>
     <color name="send_button_background">#0F9D58</color>
+    <!-- Пункт 13: жесты (свайп-ответ, long-press меню) -->
+    <color name="swipe_white">#FFFFFF</color>
+    <color name="reply_accent">#2196F3</color>
+    <color name="swipe_image_background">#607D8B</color>
+    <color name="reply_quote_text">#5F6B76</color>
 </resources>

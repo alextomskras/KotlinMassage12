@@ -32,8 +32,10 @@ class ChatFromItem(
     /** Ключ узла в зеркале текущего пользователя. */
     var dbId: String = "",
     /** Soft-delete: рисуем заглушку вместо текста. */
-    var deleted: Boolean = false
-) : ChatRowDelegate, ReadTickRow {
+    var deleted: Boolean = false,
+    /** Пункт 13: превью сообщения-источника (если это ответ). */
+    override var replyPreview: String? = null
+) : ReplyQuoteRow(), ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -55,7 +57,13 @@ class ChatFromItem(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_from_row)
         )
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? =
+        if (deleted) null else plainForEditing() ?: text.take(200)
+
+    override fun rowDbId(): String = dbId
 
     /** Открытый текст для диалога правки (plaintext или selfless-зеркало из env). */
     fun plainForEditing(): String? =
@@ -92,8 +100,10 @@ class ChatToItem(
     /** Soft-delete: заглушка вместо контента. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
-    var dbId: String = ""
-) : ChatRowDelegate {
+    var dbId: String = "",
+    /** Пункт 13: превью сообщения-источника (если это ответ). */
+    override var replyPreview: String? = null
+) : ReplyQuoteRow() {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -111,7 +121,13 @@ class ChatToItem(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row)
         )
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? =
+        if (deleted) null else displayText(text, encMsgId).takeIf { it != TextItem.DECRYPT_FAIL_LABEL }
+
+    override fun rowDbId(): String = dbId
 }
 
 /**
@@ -150,8 +166,10 @@ class TextItem(
     /** Soft-delete: рисуем заглушку вместо контента. */
     var deleted: Boolean = false,
     /** id сообщения в ЗЕРКАЛЕ ПОЛЬЗОВАТЕЛЯ (отличается от msgId у зеркал собеседника). */
-    var dbId: String = ""
-) : ChatRowDelegate, ReadTickRow {
+    var dbId: String = "",
+    /** Пункт 13: превью сообщения-источника (если это ответ). */
+    override var replyPreview: String? = null
+) : ReplyQuoteRow(), ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -187,7 +205,17 @@ class TextItem(
                 time + if (editTime > 0) " · изменено" else ""
         }
         ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? {
+        if (deleted) return null
+        return if (isIncoming) {
+            com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)?.take(500)
+        } else plainForEditing()?.take(500)
+    }
+
+    override fun rowDbId(): String = dbId
 
     /**
      * Галочки статуса исходящего сообщения: одна серая — отправлено,
@@ -236,8 +264,10 @@ class KartinkaFromItem(
     /** Soft-delete: рисуем заглушку вместо картинки. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
-    var dbId: String = ""
-) : ChatRowDelegate, ReadTickRow {
+    var dbId: String = "",
+    /** Пункт 13: превью сообщения-источника (если это ответ). */
+    override var replyPreview: String? = null
+) : ReplyQuoteRow(), ReadTickRow {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -294,7 +324,12 @@ class KartinkaFromItem(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_from_row2)
         )
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? = null // копировать картинку нечего
+
+    override fun rowDbId(): String = dbId
 }
 
 class KartinkaToItem(
@@ -307,8 +342,10 @@ class KartinkaToItem(
     /** Soft-delete: рисуем заглушку вместо картинки. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
-    var dbId: String = ""
-) : ChatRowDelegate {
+    var dbId: String = "",
+    /** Пункт 13: превью сообщения-источника (если это ответ). */
+    override var replyPreview: String? = null
+) : ReplyQuoteRow() {
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -351,7 +388,12 @@ class KartinkaToItem(
             user.profileImageUrl,
             viewHolder.itemView.findViewById(R.id.imageview_chat_to_row2)
         )
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? = null
+
+    override fun rowDbId(): String = dbId
 }
 
 /**
@@ -364,7 +406,9 @@ class DeletedTextItem(
     val user: User,
     private val isIncoming: Boolean = false,
     var dbId: String = ""
-) : ChatRowDelegate {
+) : ReplyQuoteRow() {
+
+    override var replyPreview: String? = null
 
     override val chatPartnerUser: User? get() = user
     override var rowContext: android.content.Context? = null
@@ -378,5 +422,15 @@ class DeletedTextItem(
         viewHolder.itemView.findViewById<TextView>(textId).text = TextItem.DELETED_LABEL
         viewHolder.itemView.findViewById<TextView>(timeId).text = time
         ImageLoader.loadAvatarInto(user.profileImageUrl, viewHolder.itemView.findViewById(avatarId))
+        renderQuote(viewHolder)
     }
+
+    override fun plainTextForMenu(): String? {
+        if (deleted) return null
+        return if (isIncoming) {
+            com.example.fess.kotlinmassage1.util.CryptoBridge.decryptText(null, null, msgId, text)?.take(500)
+        } else plainForEditing()?.take(500)
+    }
+
+    override fun rowDbId(): String = dbId
 }

@@ -5,4 +5,17 @@
 <string name="enter_message">Сообщение…</string>
     <string name="send">Отправить</string>
     <string name="attach_image">Прикрепить изображение</string>
+    <!-- Пункт 13: жесты -->
+    <string name="reply_action">Ответить</string>
+    <string name="copy_action">Копировать</string>
+    <string name="delete_action">Удалить</string>
+    <string name="edit_action">Изменить</string>
+    <string name="delete_for_all_action">Удалить для всех</string>
+    <string name="cancel_action">Отмена</string>
+    <string name="reply_copied">Скопировано в буфер обмена</string>
+    <string name="reply_to_prefix">Ответ на: %1$s</string>
+    <string name="reply_hint">Ответ на сообщение</string>
+    <string name="reply_dismiss">Закрыть ответ</string>
+    <string name="cancel_reply">Отменить ответ</string>
+    <string name="copied_toast">Скопировано</string>
 </resources>

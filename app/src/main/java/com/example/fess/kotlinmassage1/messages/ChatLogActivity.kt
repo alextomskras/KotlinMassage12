@@ -92,12 +92,19 @@ class ChatLogActivity : AppCompatActivity() {
 
         listenForMessages()
 
-        // Долгое нажатие на СВОЁ сообщение -> «Изменить / Удалить для всех».
-        // Колбэк объявлен в ChatRecyclerAdapter как СВОЙСТВО:
-        //   var onItemLongClickListener: ((Int, ChatRowDelegate) -> Boolean)? = null
-        // Обработка вынесена в отдельную функцию — в лямбде нельзя писать
-        // return@onItemLongClickListener (label = имя переменной, а не функции).
+        // Пункт 13: долгое нажатие на ЛЮБУЮ строку -> BottomSheetDialog с действиями
+        // («Копировать», «Ответить», + для своих «Изменить»/«Удалить»).
         adapter.onItemLongClickListener = ::handleItemLongClick
+
+        // Пункт 13: свайпы ItemTouchHelper — вправо «Ответить», влево у картинок
+        // полноэкранный просмотр (hero-переход). Свайп НЕ удаляет данные.
+        com.example.fess.kotlinmassage1.util.ChatSwipeCallback.attach(
+            findViewById(R.id.recyclerview_chat_log),
+            onReply = { _, item -> startReplyTo(item) },
+            onOpenImage = { _, item -> openImageFullscreen(item) }
+        )
+
+        findViewById<View>(R.id.reply_cancel_button).setOnClickListener { clearPendingReply() }
 
         findViewById<com.google.android.material.floatingactionbutton.FloatingActionButton>(R.id.send_button_chat_log).setOnClickListener {
             performSendMessage()
@@ -243,7 +250,15 @@ class ChatLogActivity : AppCompatActivity() {
                 if (isIncoming && chatMessage.readAt == 0L) {
                     markIncomingAsRead(p0.key ?: snapshotKey)
                 }
-                adapter.append(buildChatItem(chatMessage, isIncoming))
+                val row = buildChatItem(chatMessage, isIncoming)
+                // Пункт 13: каждая строка — потенциальный источник «Ответить»
+                // (свайп вправо). Ключ — dbId В НАШЕМ зеркале (snapshotKey),
+                // msgId автора — для replyToId у ответного сообщения.
+                adapter.registerReplySource(snapshotKey, chatMessage.id,
+                    row.plainTextForMenu() ?: "📷 Картинка")
+                // Если это ответ — восстановить плашку цитаты по replyToId.
+                adapter.applyReply(row, chatMessage.replyToId)
+                adapter.append(row)
                 scrollToBottom()
             }
 
@@ -434,7 +449,7 @@ class ChatLogActivity : AppCompatActivity() {
      * Раньше было 5 независимых setValue — при обрыве сети диалог и «последнее
      * сообщение» могли разъехаться, а push потеряться.
      */
-    private fun writeMessage(text: String, msgType: String) {
+    private fun writeMessage(text: String, msgType: String, reply: Triple<String, String, String>? = null) {
         if (msgType == ChatMessage.TYPE_TEXT) {
             // E2EE: шифруем текст под pubkey получателя; если ключа нет / TOFU не дал —
             // пишем открытым текстом (обратная совместимость со старыми клиентами).
@@ -444,10 +459,10 @@ class ChatLogActivity : AppCompatActivity() {
             val msgId = db.child(DbPaths.conversation(fromId, toId)).push().key ?: return
             CryptoBridge.encryptTextForSend(
                 this, toId, text, msgId,
-                onReady = { envelopeB64 -> writeMessageToDb(envelopeB64, msgType, encrypted = true, forcedId = msgId) },
+                onReady = { envelopeB64 -> writeMessageToDb(envelopeB64, msgType, encrypted = true, forcedId = msgId, reply = reply) },
                 onFallback = { reason ->
                     Log.w(TAG, "E2EE fallback (plaintext): $reason")
-                    writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId)
+                    writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, reply = reply)
                 }
             )
         } else if (msgType == ChatMessage.TYPE_IMAGE) {
@@ -463,15 +478,15 @@ class ChatLogActivity : AppCompatActivity() {
             CryptoBridge.prepareImageEnvelope(
                 toId, msgId, text,
                 onReady = { envelopeB64 ->
-                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = envelopeB64)
+                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = envelopeB64, reply = reply)
                 },
                 onFallback = { reason ->
                     Log.w(TAG, "E2EE image fallback (plaintext transfer): $reason")
-                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = null)
+                    if (!isFinishing && !isDestroyed) writeMessageToDb(text, msgType, encrypted = false, forcedId = msgId, imageEnv = null, reply = reply)
                 }
             )
         } else {
-            writeMessageToDb(text, msgType, encrypted = false)
+            writeMessageToDb(text, msgType, encrypted = false, reply = reply)
         }
     }
 
@@ -488,7 +503,7 @@ class ChatLogActivity : AppCompatActivity() {
      * равно 0. Иначе на старых переписках receipt писался бы заново при каждом
      * открытии чата (лишние записи), а на новых — не писался вовсе.
      */
-    private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null, imageEnv: String? = null) {
+    private fun writeMessageToDb(text: String, msgType: String, encrypted: Boolean, forcedId: String? = null, imageEnv: String? = null, reply: Triple<String, String, String>? = null) {
         val fromId = FirebaseAuth.getInstance().uid ?: return
         val toId = toUser?.uid ?: return
 
@@ -545,13 +560,13 @@ class ChatLogActivity : AppCompatActivity() {
                     "deliveredTo" to mapOf(fromId to nowSec) // отправитель «уже имеет»
                 )
             }
-            ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id, env = imageEnv)
+            ChatMessage(id, preview, fromId, toId, nowSec, msgType, transferRef = id, env = imageEnv, replyToId = reply?.second, replyPreview = reply?.third)
         } else {
             // Зеркало НЕ удаляем из кэша при чтении: если updateChildren не
             // подтвердится сервером (offline-очередь), оно останется и повторная
             // запись его возьмёт. Чистим через confirmTextMirror в onDisconnect.
             val textMirror = if (encrypted) forcedId?.let { com.example.fess.kotlinmassage1.util.CryptoBridge.peekTextMirror(it) } else null
-            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted, env = textMirror)
+            ChatMessage(messageRef.key!!, text, fromId, toId, nowSec, msgType, enc = encrypted, env = textMirror, replyToId = reply?.second, replyPreview = reply?.third)
         }
 
         // Ключ задачи в /outbox совпадает с id сообщения: релей идемпотентно читает и удаляет его.
@@ -562,9 +577,14 @@ class ChatLogActivity : AppCompatActivity() {
         // Поле присутствует явно (в отличие от legacy-записей без readAt), поэтому
         // получатель гарантированно вызовет markIncomingAsRead при открытии чата.
         val partnerCopy = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply { put("readAt", 0L) }
+        // Источник цитаты регистрируем ПО dbId ЗЕРКАЛА ПОЛУЧАТЕЛЯ (mirrorKey):
+        // когда он прочтёт историю, applyReply найдёт превью по своему ключу узла.
+        reply?.let { adapter.registerReplySource(mirrorKey, it.second, it.third) }
         updates["/${DbPaths.conversation(toId, fromId)}/$mirrorKey"] = partnerCopy
-        updates["/${DbPaths.latestConversation(fromId, toId)}"] = chatMessage
-        updates["/${DbPaths.latestConversation(toId, fromId)}"] = chatMessage
+        // В latest-зеркало цитату НЕ пишем: replyPreview нужен только внутри
+        // полного списка чата, а в списке диалогов его никто не рисует (экономия).
+        updates["/${DbPaths.latestConversation(fromId, toId)}"] = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply { remove("replyToId"); remove("replyPreview") }
+        updates["/${DbPaths.latestConversation(toId, fromId)}"] = HashMap<String, Any>(chatMessageToMap(chatMessage)).apply { remove("replyToId"); remove("replyPreview") }
         updates["/${DbPaths.OUTBOX}/$outboxKey"] = mapOf(
             // формат согласован с backend/app/outbox_relay.py: поиск uid получателя
             // идёт по полю "to" (username), текст — "text", тип — "msgType"=="IMAGE"
@@ -595,6 +615,7 @@ class ChatLogActivity : AppCompatActivity() {
                     ImageCache.putFromBase64(this, chatMessage.id, text)
                 }
                 findViewById<EditText>(R.id.edittext_chat_log).text.clear()
+                clearPendingReply()
                 scrollToBottom()
             }
             .addOnFailureListener { e ->
@@ -606,7 +627,9 @@ class ChatLogActivity : AppCompatActivity() {
     private fun performSendMessage() {
         val text = findViewById<EditText>(R.id.edittext_chat_log).text.toString()
         if (text.isEmpty()) return
-        writeMessage(text, ChatMessage.TYPE_TEXT)
+        // pendingReply читаем ДО отправки: writeMessage асинхронный (E2EE),
+        // очистка панели — в onSuccess записи.
+        writeMessage(text, ChatMessage.TYPE_TEXT, reply = pendingReply)
     }
 
     /**
@@ -649,43 +672,180 @@ class ChatLogActivity : AppCompatActivity() {
 
     /**
      * Долгое нажатие на строку чата (подписывается в onCreate как колбэк адаптера).
-     * Возвращает true, если обработали (показали меню), false — чужое сообщение.
+     * Пункт 13: для ВСЕХ строк показываем BottomSheetDialog с действиями:
+     * «Копировать» (если есть открытый текст), «Ответить», а для своих сообщений
+     * ещё «Изменить» и «Удалить для всех». Возвращает true — обработали.
      */
     private fun handleItemLongClick(position: Int, item: com.example.fess.kotlinmassage1.views.ChatRowDelegate): Boolean {
         val mine = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
             (item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) ||
             (item is com.example.fess.kotlinmassage1.views.KartinkaFromItem)
-        if (!mine) return false
-        // Для картинок — только удаление; для текста — правка + удаление.
-        when (item) {
-            is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
-                confirmDeleteImage(item.dbId.ifEmpty { item.msgId })
-            else -> showMyMessageMenu(
-                plain = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.plainForEditing()
-                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.plainForEditing(),
-                editable = item is com.example.fess.kotlinmassage1.views.ChatFromItem ||
-                    item is com.example.fess.kotlinmassage1.views.TextItem,
-                nodeKey = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.dbId
-                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.dbId ?: "",
-                mirrorMsgId = (item as? com.example.fess.kotlinmassage1.views.ChatFromItem)?.msgId
-                    ?: (item as? com.example.fess.kotlinmassage1.views.TextItem)?.msgId ?: ""
-            )
+
+        // Собираем действия динамически: индекс пункта == индекс обработчика.
+        val labels = ArrayList<String>()
+        val actions = ArrayList<() -> Unit>()
+        fun act(label: String, handler: () -> Unit) { labels.add(label); actions.add(handler) }
+
+        val plain = item.plainTextForMenu()
+        if (!plain.isNullOrEmpty()) act(getString(R.string.copy_action)) { copyToClipboard(plain) }
+        act(getString(R.string.reply_action)) { startReplyTo(item) }
+        if (mine && item is com.example.fess.kotlinmassage1.views.ChatFromItem) {
+            act(getString(R.string.edit_action)) {
+                startEditMessage(item.plainForEditing(), item.dbId, item.msgId)
+            }
         }
+        if (mine && item is com.example.fess.kotlinmassage1.views.TextItem && !item.isIncomingForMenu()) {
+            act(getString(R.string.edit_action)) {
+                startEditMessage(item.plainForEditing(), item.dbId, item.msgId)
+            }
+        }
+        if (mine) act(getString(R.string.delete_action)) {
+            when (item) {
+                is com.example.fess.kotlinmassage1.views.KartinkaFromItem ->
+                    confirmDeleteImage(item.dbId.ifEmpty { item.msgId })
+                is com.example.fess.kotlinmassage1.views.ChatFromItem ->
+                    softDeleteMessage(item.dbId, item.msgId)
+                is com.example.fess.kotlinmassage1.views.TextItem ->
+                    softDeleteMessage(item.dbId, item.msgId)
+            }
+        }
+
+        showActionsSheet(labels, actions)
         return true
     }
 
-    private fun showMyMessageMenu(plain: String?, editable: Boolean, nodeKey: String, mirrorMsgId: String) {
-        val options = if (editable) arrayOf("✏️ Изменить", "🗑 Удалить для всех")
-                      else arrayOf("🗑 Удалить для всех")
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setItems(options) { _, which ->
-                val idx = if (editable) which else which + 1
-                when (idx) {
-                    0 -> startEditMessage(plain, nodeKey, mirrorMsgId)
-                    else -> softDeleteMessage(nodeKey, mirrorMsgId)
+    /** BottomSheetDialog со списком действий (Material, без кастомных layout-файлов). */
+    private fun showActionsSheet(labels: List<String>, actions: List<() -> Unit>) {
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val list = androidx.recyclerview.widget.RecyclerView(this).apply {
+            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
+            adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<
+                androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+
+                inner class Row(val tv: android.widget.TextView) :
+                    androidx.recyclerview.widget.RecyclerView.ViewHolder(tv)
+
+                override fun getItemCount(): Int = labels.size
+
+                override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): Row {
+                    val tv = android.widget.TextView(parent.context).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                        setPadding(48, 40, 48, 40)
+                        textSize = 16f
+                        setBackgroundResource(android.R.drawable.list_selector_background)
+                        isClickable = true
+                        isFocusable = true
+                    }
+                    return Row(tv)
+                }
+
+                override fun onBindViewHolder(holder: Row, position: Int) {
+                    holder.tv.text = labels[position]
+                    holder.tv.setOnClickListener {
+                        sheet.dismiss()
+                        // Действие после анимации закрытия шторки
+                        holder.tv.postDelayed({ actions[position]() }, 120)
+                    }
                 }
             }
-            .show()
+        }
+        sheet.setContentView(list)
+        sheet.show()
+    }
+
+    private fun copyToClipboard(text: String) {
+        val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("message", text))
+        Toast.makeText(this, R.string.copied_toast, Toast.LENGTH_SHORT).show()
+    }
+
+    // ===== Пункт 13: swipe reply =====
+
+    /** Источник ответа: dbId узла + msgId автора (для replyToId) + превью (для плашки). */
+    private var pendingReply: Triple<String, String, String>? = null
+
+    /** Свайп/меню «Ответить»: запоминаем источник и показываем цитату над полем ввода. */
+    private fun startReplyTo(item: com.example.fess.kotlinmassage1.views.ChatRowDelegate) {
+        val dbId = item.rowDbId()
+        if (dbId.isEmpty()) return
+        val preview = item.plainTextForMenu()?.takeIf { it.isNotEmpty() }
+            ?: when (item) {
+                is com.example.fess.kotlinmassage1.views.KartinkaFromItem,
+                is com.example.fess.kotlinmassage1.views.KartinkaToItem -> "📷 Картинка"
+                else -> return
+            }
+        // msgId источника — id в ЗЕРКАЛЕ АВТОРА: у получателя свой ключ узла,
+        // но msgId автора одинаков в обоих зеркалах (по нему строится replyMap).
+        val sourceMsgId = when (item) {
+            is com.example.fess.kotlinmassage1.views.ChatFromItem -> item.msgId
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.msgId
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.msgId
+            is com.example.fess.kotlinmassage1.views.TextItem -> item.msgId
+            else -> dbId
+        }
+        pendingReply = Triple(dbId, sourceMsgId, preview)
+        findViewById<View>(R.id.reply_preview_bar).visibility = View.VISIBLE
+        findViewById<android.widget.TextView>(R.id.reply_preview_text).text =
+            getString(R.string.reply_to_prefix, preview)
+        findViewById<EditText>(R.id.edittext_chat_log).requestFocus()
+    }
+
+    private fun clearPendingReply() {
+        pendingReply = null
+        findViewById<View>(R.id.reply_preview_bar).visibility = View.GONE
+    }
+
+    /** Свайп влево по картинке — полноэкранный просмотр (hero-переход, пункт 11). */
+    private fun openImageFullscreen(item: com.example.fess.kotlinmassage1.views.ChatRowDelegate) {
+        val ctx = item.rowContext ?: return
+        if (ctx !is Activity || ctx.isFinishing || ctx.isDestroyed) return
+        val ref = when (item) {
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.transferRef
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.transferRef
+            else -> return
+        }
+        val payload = item.text
+        val env = when (item) {
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.envJson
+            is com.example.fess.kotlinmassage1.views.KartinkaToItem -> item.envJson
+            else -> null
+        }
+        val outgoing = item is com.example.fess.kotlinmassage1.views.KartinkaFromItem
+        // Миниатюра «вооружена» transitionName в bindTo (armHero по msgId/transferRef).
+        val key = when (item) {
+            is com.example.fess.kotlinmassage1.views.KartinkaFromItem -> item.msgId.ifEmpty { ref ?: "" }
+            else -> (item as com.example.fess.kotlinmassage1.views.KartinkaToItem).msgId.ifEmpty { ref ?: "" }
+        }
+        val source = findMiniature(key)
+        if (source != null && android.os.Build.VERSION.SDK_INT >= 21 && source.transitionName != null) {
+            com.example.fess.kotlinmassage1.util.HeroTransition.launch(
+                ctx, source, ref, payload, envJson = env, isOutgoing = outgoing)
+        } else {
+            ctx.startActivity(
+                com.example.fess.kotlinmassage1.util.FullscreenImageActivity.intent(ctx, ref, payload, null, env, outgoing)
+            )
+        }
+    }
+
+    /** Найти миниатюру картинки на экране по ключу hero (chat_image_<key>). */
+    private fun findMiniature(key: String): View? {
+        if (android.os.Build.VERSION.SDK_INT < 21 || key.isEmpty()) return null
+        val name = "chat_image_$key"
+        val rv = findViewById<RecyclerView>(R.id.recyclerview_chat_log)
+        for (i in 0 until rv.childCount) {
+            val found = rv.getChildAt(i).findViewWithTag<View>(name)
+                ?: run {
+                    val iv = rv.getChildAt(i).findViewById<View>(R.id.imageview_chat_from_row2)
+                        ?: rv.getChildAt(i).findViewById<View>(R.id.imageview_chat_to_row2)
+                    if (iv?.transitionName == name) iv else null
+                }
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun confirmDeleteImage(nodeKey: String) {
@@ -852,6 +1012,7 @@ class ChatLogActivity : AppCompatActivity() {
         put("enc", m.enc); put("env", m.env); put("deleted", m.deleted); put("deletedBy", m.deletedBy)
         put("editedText", m.editedText); put("editTime", m.editTime); put("readAt", m.readAt)
         put("envEdited", m.envEdited)
+        put("replyToId", m.replyToId); put("replyPreview", m.replyPreview)
         return out
     }
 

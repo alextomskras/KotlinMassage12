@@ -63,7 +63,15 @@ class ChatMessage(
      * эфемерный конверт, а selfless-зеркало отправителя — здесь (старое [env]
      * относится к оригинальному тексту и для правки непригодно).
      */
-    val envEdited: String? = null
+    val envEdited: String? = null,
+    /**
+     * Пункт 13 (swipe reply): id сообщения-источника в ЗЕРКАЛЕ АВТОРА + превью
+     * его текста (<=90 символов). Пишутся открытым текстом даже в E2EE — это
+     * метаданные ответа, сам контент цитаты не раскрывает (только первые символы
+     * уже отправленного текста, как превью пуша).
+     */
+    val replyToId: String? = null,
+    val replyPreview: String? = null
 ) {
     companion object {
         const val TYPE_TEXT = "text"
@@ -116,7 +124,9 @@ class ChatMessage(
                 editedText = if (editedTextRaw is String) editedTextRaw else null,
                 editTime = s.child("editTime").getValue(Long::class.java) ?: -1L,
                 readAt = s.child("readAt").getValue(Long::class.java) ?: -1L,
-                envEdited = if (envEditedRaw is String) envEditedRaw else null
+                envEdited = if (envEditedRaw is String) envEditedRaw else null,
+                replyToId = s.child("replyToId").getValue(String::class.java),
+                replyPreview = s.child("replyPreview").getValue(String::class.java)
             )
         }
     }

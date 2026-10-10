@@ -35,6 +35,9 @@ class ChatRecyclerAdapter(
         notifyItemInserted(items.size - 1)
     }
 
+    /** Все строки (для массового заполнения reply-карты при старом submit()). */
+    val currentItems: List<ChatRowDelegate> get() = items
+
     /** Точечное обновление строки (readAt / deleted / edited) без пересборки всего списка. */
     fun updateAt(position: Int) {
         if (position in items.indices) notifyItemChanged(position)
@@ -71,6 +74,28 @@ class ChatRecyclerAdapter(
 
     /** Строка по позиции (для long-press меню). */
     fun itemAt(position: Int): ChatRowDelegate? = items.getOrNull(position)
+
+    // ===== Пункт 13: swipe reply =====
+    /** dbId строки -> (msgId источника для цитаты, превью текста <=90 симв.). */
+    private val replyMap = HashMap<String, Pair<String, String>>()
+
+    /** Зарегистрировать строку как возможный источник ответа (свайп вправо). */
+    fun registerReplySource(dbId: String, msgId: String, preview: String) {
+        if (dbId.isEmpty()) return
+        replyMap[dbId] = msgId to preview.take(90)
+    }
+
+    /** Источник ответа по dbId (из свайпа); null если строка не отвечает. */
+    fun replySourceFor(dbId: String): Pair<String, String>? = replyMap[dbId]
+
+    /** Проставить цитату строке-ответчику при добавлении (replyToId из БД). */
+    fun applyReply(item: ChatRowDelegate, replyToId: String?) {
+        if (item is ReplyQuoteRow && !replyToId.isNullOrEmpty()) {
+            val preview = replyMap[replyToId]?.second
+                ?: (item.replyPreview ?: "")   // fallback из БД, если источника нет в списке
+            if (preview.isNotEmpty()) item.replyPreview = preview
+        }
+    }
 
     /** Позиция строки по ключу узла В ЗЕРКАЛЕ ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ (dbId). */
     fun findRowPosition(dbId: String): Int {
@@ -139,6 +164,32 @@ interface ChatRowDelegate {
 
     /** Контекст для локального кэша картинок (передаёт активити; null = без кэша). */
     var rowContext: android.content.Context?
+
+    /** Открытый текст для long-press меню («Копировать»); null — копировать нечего. */
+    fun plainTextForMenu(): String? = null
+
+    /** dbId строки (ключ узла в нашем зеркале) — для reply-карты. Пусто, если нет. */
+    fun rowDbId(): String = ""
+}
+
+/**
+ * Строка, умеющая рисовать цитату «Ответ на: …» (пункт 13, swipe reply).
+ * Плашка лежит ВНЕ пузыря со ссылкой textview_reply_quote (видна только с цитатой).
+ */
+abstract class ReplyQuoteRow : ChatRowDelegate {
+    /** Превью сообщения-источника; null/пусто -> плашка скрыта. */
+    abstract var replyPreview: String?
+
+    protected fun renderQuote(viewHolder: RecyclerView.ViewHolder) {
+        val q = viewHolder.itemView.findViewById<TextView>(R.id.textview_reply_quote) ?: return
+        val preview = replyPreview
+        if (!preview.isNullOrEmpty()) {
+            q.text = q.context.getString(R.string.reply_to_prefix, preview)
+            q.visibility = View.VISIBLE
+        } else {
+            q.visibility = View.GONE
+        }
+    }
 }
 
 /** Строка исходящего сообщения с галочкой статуса (readAt > 0 => две синие). */
@@ -157,9 +208,9 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
         // а не картинки — isImagePayload(text) вернёт false, так что ложное срабатывание
         // legacy-ветки исключено; для старых незашифрованных сообщений с base64 в тексте
         // это единственный путь показа.
-        KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env)
+        KartinkaToItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, replyPreview = chatMessage.replyPreview)
     chatMessage.type == ChatMessage.TYPE_IMAGE ->
-        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, readAt = chatMessage.readAt)
+        KartinkaFromItem(chatMessage.text, user, timeStr, msgId = chatMessage.id, transferRef = chatMessage.transferRef ?: (if (chatMessage.type == com.example.fess.kotlinmassage1.models.ChatMessage.TYPE_IMAGE) chatMessage.id else null), envJson = chatMessage.env, readAt = chatMessage.readAt, replyPreview = chatMessage.replyPreview)
     // E2EE: enc-сообщение читают СВОИМ приватником обе стороны диалога — и
     // входящее, и исходящее. Раньше дешифровка была прикручена только к
     // входящим (ChatToItem), поэтому отправитель своего же шифрованного
@@ -170,7 +221,7 @@ fun chatItemFor(chatMessage: ChatMessage, user: User, isIncoming: Boolean, timeS
     // после исключения узел приходит с дефолтным readAt=-1 даже если получатель уже
     // поставил receipt. Поэтому для enc-строк readAt всегда стартует с -1 — живую
     // галочку рисует read-tracker (applyReadFromMirror), который читает сырой лист.
-    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id)
-    isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted)
-    else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted)
+    chatMessage.enc -> TextItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, isIncoming = isIncoming, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, readAt = -1L, editTime = chatMessage.editTime, deleted = chatMessage.deleted, dbId = chatMessage.id, replyPreview = chatMessage.replyPreview)
+    isIncoming -> ChatToItem(chatMessage.editedText ?: chatMessage.text, user, timeStr, msgId = chatMessage.id, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
+    else -> ChatFromItem(chatMessage.text, user, timeStr, editedText = chatMessage.editedText, msgId = chatMessage.id, readAt = chatMessage.readAt, editTime = chatMessage.editTime, envMirror = if (chatMessage.editedText != null) chatMessage.envEdited else chatMessage.env, deleted = chatMessage.deleted, replyPreview = chatMessage.replyPreview)
 }

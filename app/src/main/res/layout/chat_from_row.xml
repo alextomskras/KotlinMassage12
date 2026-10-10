@@ -6,6 +6,29 @@
     android:layout_height="wrap_content"
     android:layout_marginBottom="12dp">
 
+    <!-- Пункт 13: плашка «Ответ на: ...» (swipe reply), скрыта без цитаты -->
+    <TextView
+        android:id="@+id/textview_reply_quote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="2dp"
+        android:background="@drawable/reply_quote_background"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:textColor="@color/reply_quote_text"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@+id/textview_from_row"
+        app:layout_constraintStart_toStartOf="@+id/textview_from_row"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="Ответ на: привет, как дела"
+        tools:visibility="visible" />
+
     <TextView
         android:id="@+id/textview_from_row"
         android:layout_width="wrap_content"
@@ -18,7 +41,7 @@
         android:textColor="@color/bubble_in_text"
         android:padding="16dp"
         app:layout_constraintStart_toEndOf="@+id/imageview_chat_from_row"
-        app:layout_constraintTop_toTopOf="@+id/imageview_chat_from_row" />
+        app:layout_constraintTop_toBottomOf="@+id/textview_reply_quote" />
 
     <!-- Статус доставки/прочтения: одна серая галочка = отправлено,
          две синие = прочтено собеседником (см. ChatLogActivity.readTracker). -->
@@ -57,7 +80,7 @@
         android:layout_marginTop="8dp"
         app:civ_border_width="2dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/textview_reply_quote"
         app:srcCompat="@android:drawable/btn_star_big_on" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
