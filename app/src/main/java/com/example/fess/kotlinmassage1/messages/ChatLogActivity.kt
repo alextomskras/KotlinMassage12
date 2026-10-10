@@ -371,7 +371,7 @@ class ChatLogActivity : AppCompatActivity() {
             return
         }
         // fallback: ключ может совпадать с msgId (id в зеркале автора)
-        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> d.msgId == key }
+        val byMsg = adapter.outgoingReadRows().firstOrNull { (_, d) -> (d as? com.example.fess.kotlinmassage1.views.ChatRowDelegate)?.rowMsgId() == key }
         if (byMsg != null) {
             if (byMsg.second.readAt != readValue) {
                 byMsg.second.readAt = readValue

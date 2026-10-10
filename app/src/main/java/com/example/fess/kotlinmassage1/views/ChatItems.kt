@@ -22,7 +22,7 @@ class ChatFromItem(
     var editedText: String? = null,
     private val encMsgId: String? = null,
     /** id сообщения в зеркале MY uid — нужен для записи readAt собеседнику. */
-    override var msgId: String = "",
+    var msgId: String = "",
     /** Прочтено ли собеседником (readAt > 0) — рисует двойную синюю галочку. */
     override var readAt: Long = -1,
     /** Время правки (>0 => показываем «изменено»). */
@@ -98,7 +98,7 @@ class ChatToItem(
     val user: User,
     val time: String,
     private val encMsgId: String? = null,
-    override var msgId: String = "",
+    var msgId: String = "",
     /** Soft-delete: заглушка вместо контента. */
     var deleted: Boolean = false,
     /** Ключ узла в зеркале текущего пользователя. */
@@ -160,7 +160,7 @@ class TextItem(
     val text: String,
     val user: User,
     val time: String,
-    override var msgId: String,
+    var msgId: String,
     private val isIncoming: Boolean = false,
     private val envMirror: String? = null,
     /** Прочтено собеседником (для исходящих; readAt из БД). */
@@ -262,7 +262,7 @@ class KartinkaFromItem(
     val text: String,
     val user: User,
     val time: String,
-    override var msgId: String = "",
+    var msgId: String = "",
     val transferRef: String? = null,
     val envJson: String? = null,
     /** Прочтено собеседником (для исходящих). */
@@ -344,7 +344,7 @@ class KartinkaToItem(
     val text: String,
     val user: User,
     val time: String,
-    override var msgId: String = "",
+    var msgId: String = "",
     val transferRef: String? = null,
     val envJson: String? = null,
     /** Soft-delete: рисуем заглушку вместо картинки. */

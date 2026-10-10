@@ -202,8 +202,6 @@ abstract class ReplyQuoteRow : ChatRowDelegate {
 /** Строка исходящего сообщения с галочкой статуса (readAt > 0 => две синие). */
 interface ReadTickRow {
     var readAt: Long
-    /** id сообщения в зеркале автора — fallback-ключ для read-tracker'а. */
-    var msgId: String
 }
 
 /** Тип сообщения -> строка лога чата (было в ChatLogActivity.buildChatItem). */
